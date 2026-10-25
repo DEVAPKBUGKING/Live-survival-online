@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { World } from './World.js';
 import { Controls } from './Controls.js';
+import { Collision } from './Collision.js';
 
 export class Game {
   constructor(container) {
@@ -10,6 +11,7 @@ export class Game {
     this.renderer = null;
     this.world = null;
     this.controls = null;
+    this.collision = new Collision();
     this.running = false;
     this.paused = false;
     this.clock = new THREE.Clock();
@@ -19,41 +21,50 @@ export class Game {
     this.isFullscreen = false;
   }
 
-  start() {
+  // onProgress(percent 0..1, label)
+  async start(onProgress) {
     // ---- Scene ----
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(0x9dc8e8);
     this.scene.fog = new THREE.Fog(0x9dc8e8, 40, 95);
 
-    // ---- Camera (first-person) ----
+    // ---- Camera ----
     this.camera = new THREE.PerspectiveCamera(
       72, window.innerWidth / window.innerHeight, 0.1, 200
     );
     this.camera.position.set(0, 1.6, 0);
     this.camera.rotation.order = 'YXZ';
 
-    // ---- Renderer ----
+    // ---- Renderer (RINGAN) ----
     this.renderer = new THREE.WebGLRenderer({
-      antialias: true,
+      antialias: false,
       powerPreference: 'high-performance'
     });
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.25));
     this.renderer.setSize(window.innerWidth, window.innerHeight);
     this.renderer.shadowMap.enabled = true;
-    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    this.renderer.shadowMap.type = THREE.BasicShadowMap; // termurah
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
-    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.05;
+    // Tone mapping matikan — Lambert + hemisphere sudah cukup cerah
+    this.renderer.toneMapping = THREE.NoToneMapping;
     this.container.appendChild(this.renderer.domElement);
 
+    if (onProgress) onProgress(0.15, 'Menyiapkan renderer');
+    await new Promise(r => setTimeout(r, 0));
+
     // ---- World ----
-    this.world = new World(this.scene);
-    this.world.build();
+    this.world = new World(this.scene, this.collision);
+    await this.world.build((p, label) => {
+      if (onProgress) onProgress(0.15 + p * 0.7, label);
+    });
 
     // ---- Controls ----
-    this.controls = new Controls(this.camera, this.renderer.domElement);
+    this.controls = new Controls(this.camera, this.renderer.domElement, this.collision);
     this.controls.enable();
     this.controls.setJoystick(this.joyValue);
+
+    if (onProgress) onProgress(0.9, 'Menyiapkan kontrol');
+    await new Promise(r => setTimeout(r, 0));
 
     // ---- HUD ----
     this.createHUD();
@@ -62,21 +73,22 @@ export class Game {
     this.onResize = () => this.handleResize();
     window.addEventListener('resize', this.onResize);
 
-    // ---- Fullscreen change listener ----
     this.onFsChange = () => {
       this.isFullscreen = !!document.fullscreenElement;
       this.updateFullscreenBtn();
     };
     document.addEventListener('fullscreenchange', this.onFsChange);
 
+    // ---- Render frame pertama ----
+    this.renderer.render(this.scene, this.camera);
+
+    if (onProgress) onProgress(1, 'Selesai');
+
     // ---- Loop ----
     this.running = true;
     this.animate();
   }
 
-  // ============================================================
-  // HUD
-  // ============================================================
   createHUD() {
     this.hudEl = document.createElement('div');
     this.hudEl.id = 'game-hud';
@@ -93,7 +105,6 @@ export class Game {
     `;
     this.container.appendChild(this.hudEl);
 
-    // ---- Joystick ----
     const zone = this.hudEl.querySelector('#joystick-zone');
     const base = this.hudEl.querySelector('#joystick-base');
     const knob = this.hudEl.querySelector('#joystick-knob');
@@ -144,7 +155,6 @@ export class Game {
     zone.addEventListener('touchend', endJoy);
     zone.addEventListener('touchcancel', endJoy);
 
-    // ---- Look zone ----
     const lookZone = this.hudEl.querySelector('#look-zone');
     let lookTouchId = null;
     let lastLook = { x: 0, y: 0 };
@@ -172,7 +182,6 @@ export class Game {
     lookZone.addEventListener('touchend', endLook);
     lookZone.addEventListener('touchcancel', endLook);
 
-    // ---- Buttons ----
     this.hudEl.querySelector('#btn-fullscreen').addEventListener('click', (e) => {
       e.stopPropagation();
       this.toggleFullscreen();
@@ -184,22 +193,12 @@ export class Game {
     });
   }
 
-  // ============================================================
-  // Fullscreen + landscape lock
-  // ============================================================
   async toggleFullscreen() {
     try {
       if (!document.fullscreenElement) {
         await document.documentElement.requestFullscreen({ navigationUI: 'hide' });
-
-        // Coba kunci landscape — didukung Chrome Android
         if (screen.orientation && screen.orientation.lock) {
-          try {
-            await screen.orientation.lock('landscape');
-          } catch (err) {
-            // Sebagian browser menolak tanpa user gesture tambahan; abaikan
-            console.warn('Orientation lock failed:', err.message);
-          }
+          try { await screen.orientation.lock('landscape'); } catch {}
         }
       } else {
         if (screen.orientation && screen.orientation.unlock) {
@@ -214,13 +213,11 @@ export class Game {
 
   updateFullscreenBtn() {
     const btn = this.hudEl?.querySelector('#btn-fullscreen');
-    if (btn) btn.textContent = this.isFullscreen ? '⛶' : '⛶';
-    // Ikon sama — beda warna lewat CSS class
     if (btn) btn.classList.toggle('fs-on', this.isFullscreen);
   }
 
   // ============================================================
-  // Pause menu
+  // Pause menu — sekarang punya EXIT yang kembali ke home
   // ============================================================
   openPauseMenu() {
     if (this.paused) return;
@@ -235,7 +232,7 @@ export class Game {
         <h2>PAUSED</h2>
         <button class="pause-btn primary" data-action="resume">RESUME</button>
         <button class="pause-btn" data-action="settings">SETTINGS</button>
-        <button class="pause-btn danger" data-action="exit">EXIT TO MENU</button>
+        <button class="pause-btn danger" data-action="exit">EXIT TO HOME</button>
       </div>
     `;
     this.container.appendChild(this.pauseEl);
@@ -245,7 +242,7 @@ export class Game {
         const action = btn.dataset.action;
         if (action === 'resume') this.closePauseMenu();
         else if (action === 'settings') this.openSettings();
-        else if (action === 'exit') this.exitToMenu();
+        else if (action === 'exit') this.exitToHome();
       });
     });
   }
@@ -258,8 +255,8 @@ export class Game {
     this.paused = false;
   }
 
+  // Settings: sensitivity, speed, DAN tombol EXIT yang kembali ke home
   openSettings() {
-    // Sub-panel di dalam pause menu — sederhana, hindari nested modal
     const panel = this.pauseEl?.querySelector('.pause-panel');
     if (!panel) return;
     panel.innerHTML = `
@@ -273,6 +270,7 @@ export class Game {
         <input type="range" min="2" max="7" step="0.5" value="4" id="set-speed" />
       </label>
       <button class="pause-btn primary" data-action="back">BACK</button>
+      <button class="pause-btn danger" data-action="exit">EXIT TO HOME</button>
     `;
     panel.querySelector('#set-sens').addEventListener('input', (e) => {
       const v = parseFloat(e.target.value);
@@ -285,10 +283,14 @@ export class Game {
       this.closePauseMenu();
       this.openPauseMenu();
     });
+    panel.querySelector('[data-action="exit"]').addEventListener('click', () => {
+      this.exitToHome();
+    });
   }
 
-  async exitToMenu() {
-    this.closePauseMenu();
+  async exitToHome() {
+    if (this.pauseEl) this.pauseEl.remove();
+    this.pauseEl = null;
     if (document.fullscreenElement) {
       try { await document.exitFullscreen(); } catch {}
     }
@@ -299,9 +301,6 @@ export class Game {
     location.reload();
   }
 
-  // ============================================================
-  // Resize + loop
-  // ============================================================
   handleResize() {
     this.camera.aspect = window.innerWidth / window.innerHeight;
     this.camera.updateProjectionMatrix();
@@ -311,13 +310,10 @@ export class Game {
   animate() {
     if (!this.running) return;
     requestAnimationFrame(() => this.animate());
-
     const dt = Math.min(this.clock.getDelta(), 0.1);
-
     if (!this.paused) {
       this.controls.update(dt);
     }
-
     this.renderer.render(this.scene, this.camera);
   }
 
