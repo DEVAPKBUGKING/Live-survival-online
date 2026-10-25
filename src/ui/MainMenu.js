@@ -1,7 +1,7 @@
 export class MainMenu {
-  constructor(container, onPlay) {
+  constructor(container, actions) {
     this.container = container;
-    this.onPlay = onPlay;
+    this.actions = actions; // { onPlay, onCreate, onJoin, onSettings }
     this.el = null;
   }
 
@@ -9,10 +9,6 @@ export class MainMenu {
     this.el = document.createElement('div');
     this.el.id = 'main-menu';
     this.el.innerHTML = `
-      <div class="conn-status">
-        <span class="conn-dot"></span>
-        <span>Offline</span>
-      </div>
       <div class="logo">LIFE SURVIVAL<br>ONLINE</div>
       <div class="subtitle">3D Multiplayer</div>
       <div class="menu-buttons">
@@ -21,26 +17,21 @@ export class MainMenu {
         <button data-action="join">JOIN ROOM</button>
         <button data-action="settings">SETTINGS</button>
       </div>
-      <div class="version">v0.1.0 — Tahap 1</div>
+      <div class="version">v0.2.0 — Tahap 2</div>
     `;
 
     this.el.querySelectorAll('button').forEach(btn => {
       btn.addEventListener('click', () => {
-        const action = btn.dataset.action;
-        if (action === 'play') {
-          this.onPlay('play');
-        } else if (action === 'create' || action === 'join') {
-          alert('Room system diimplementasikan di Tahap 2.');
-        } else if (action === 'settings') {
-          alert('Settings akan diimplementasikan nanti.');
-        }
+        const a = btn.dataset.action;
+        if (a === 'play') this.actions.onPlay();
+        else if (a === 'create') this.actions.onCreate();
+        else if (a === 'join') this.actions.onJoin();
+        else if (a === 'settings') this.actions.onSettings();
       });
     });
 
     this.container.appendChild(this.el);
   }
 
-  hide() {
-    if (this.el) { this.el.remove(); this.el = null; }
-  }
+  hide() { if (this.el) { this.el.remove(); this.el = null; } }
 }
