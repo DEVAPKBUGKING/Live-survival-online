@@ -11,6 +11,11 @@ import { Minimap } from '../ui/Minimap.js';
 export class Game {
   constructor(container) {
     this.container = container;
+    // Paksa container game (3D) ada di lapisan paling bawah
+    this.container.style.position = 'absolute';
+    this.container.style.inset = '0';
+    this.container.style.zIndex = '0';
+
     this.scene = null;
     this.camera = null;
     this.renderer = null;
@@ -34,6 +39,7 @@ export class Game {
     this.buttonsEl = null;
     this.joyValue = { x: 0, y: 0 };
     this.isFullscreen = false;
+    this.isForcedLandscape = false;
     this.unsubs = [];
 
     this.joyTouchId = null;
@@ -79,7 +85,7 @@ export class Game {
     this.inventory.add('water', 3);
 
     this.locationUI = new LocationUI(this.container);
-    this.minimap = new Minimap(this.container);
+    this.minimap = new Minimap(); // Render ke document.body
 
     if (onProgress) onProgress(0.9, 'Menyiapkan UI');
     await new Promise(r => setTimeout(r, 0));
@@ -243,7 +249,6 @@ export class Game {
 
   checkInteractables() {
     if (this.modal !== null || !this.world.city) return;
-    
     let nearest = null;
     let minDist = Infinity;
 
@@ -268,12 +273,8 @@ export class Game {
 
   doInteract() {
     if (!this.nearbyInteractable) return;
-
-    if (this.nearbyInteractable.type === 'airport') {
-      this.openTravelMenu('Airport');
-    } else if (this.nearbyInteractable.type === 'subway') {
-      this.openTravelMenu('Subway');
-    }
+    if (this.nearbyInteractable.type === 'airport') this.openTravelMenu('Airport');
+    else if (this.nearbyInteractable.type === 'subway') this.openTravelMenu('Subway');
   }
 
   openTravelMenu(type) {
@@ -430,7 +431,7 @@ export class Game {
     this.container.style.transform = '';
     this.container.style.width = '100%';
     this.container.style.height = '100%';
-    this.container.style.position = 'relative';
+    this.container.style.position = 'absolute';
     this.container.style.top = '0';
     this.container.style.left = '0';
     setTimeout(() => this.handleResize(), 100);
@@ -465,6 +466,7 @@ export class Game {
       if (this.world) this.world.updateAnimals(dt);
       this.checkInteractables();
       
+      // Pastikan Minimap diupdate
       if (this.minimap) {
         this.minimap.update(this.camera.position, this.controls.yaw, this.world.city.interactables);
       }
