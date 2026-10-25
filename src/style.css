@@ -89,7 +89,7 @@ html, body {
 #loading-screen {
   position: absolute;
   inset: 0;
-  z-index: 300;
+  z-index: 500;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -164,6 +164,7 @@ html, body {
   box-shadow: 0 0 6px rgba(0, 0, 0, 0.6);
 }
 
+/* Joystick: kiri bawah, 45% x 40% */
 #joystick-zone {
   position: absolute;
   left: 0;
@@ -200,6 +201,7 @@ html, body {
   pointer-events: none;
 }
 
+/* Look zone: kanan atas, 55% x 60%, TIDAK menutupi hud-buttons */
 #look-zone {
   position: absolute;
   right: 0;
@@ -210,6 +212,7 @@ html, body {
   touch-action: none;
 }
 
+/* HUD buttons: sibling #game-hud, di atas look-zone */
 #hud-buttons {
   position: absolute;
   top: 12px;
@@ -217,48 +220,80 @@ html, body {
   display: flex;
   gap: 8px;
   pointer-events: auto;
-  z-index: 60;
+  z-index: 300;
 }
 
 #hud-buttons button {
-  width: 44px;
-  height: 44px;
+  width: 48px;
+  height: 48px;
   border-radius: 12px;
-  background: rgba(0, 0, 0, 0.55);
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(0, 0, 0, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.3);
   color: #ffffff;
-  font-size: 20px;
+  font-size: 22px;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
+  touch-action: manipulation;
   transition: transform 0.1s, background 0.15s;
 }
 #hud-buttons button:active {
   transform: scale(0.92);
-  background: rgba(60, 60, 90, 0.7);
+  background: rgba(60, 60, 90, 0.9);
 }
 #hud-buttons button.fs-on {
-  background: rgba(59, 130, 246, 0.6);
+  background: rgba(59, 130, 246, 0.7);
   border-color: #3b82f6;
 }
 
-/* ---------- Pause menu ---------- */
+/* ---------- Toast ---------- */
+#toast-container {
+  position: absolute;
+  top: 72px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  pointer-events: none;
+  z-index: 80;
+  width: 90%;
+  max-width: 360px;
+}
+.toast {
+  padding: 10px 16px;
+  border-radius: 10px;
+  background: rgba(20, 20, 40, 0.95);
+  border: 1px solid #3b82f6;
+  color: #e8e8f0;
+  font-size: 12px;
+  text-align: center;
+  animation: toast-in 0.3s ease;
+}
+.toast.fade-out { opacity: 0; transition: opacity 0.4s; }
+@keyframes toast-in {
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ---------- Pause menu (di atas HUD) ---------- */
 #pause-menu {
   position: absolute;
   inset: 0;
-  background: rgba(5, 5, 15, 0.75);
+  background: rgba(5, 5, 15, 0.78);
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 200;
+  z-index: 400;
+  pointer-events: auto;
   padding: 24px;
 }
 
 .pause-panel {
   width: 100%;
   max-width: 320px;
-  background: rgba(20, 20, 40, 0.95);
+  background: rgba(20, 20, 40, 0.98);
   border: 1px solid #2a2a40;
   border-radius: 16px;
   padding: 24px;
@@ -303,7 +338,85 @@ html, body {
   accent-color: #3b82f6;
 }
 
-/* ---------- Modal (Create/Join) ---------- */
+/* ---------- Inventory (di atas HUD) ---------- */
+#inventory-screen {
+  position: absolute;
+  inset: 0;
+  background: rgba(5, 5, 15, 0.88);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 400;
+  pointer-events: auto;
+  padding: 20px;
+}
+.inventory-panel {
+  width: 100%;
+  max-width: 420px;
+  max-height: 80vh;
+  overflow-y: auto;
+  background: rgba(20, 20, 40, 0.98);
+  border: 1px solid #2a2a40;
+  border-radius: 16px;
+  padding: 20px;
+}
+.inventory-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+.inventory-header h2 {
+  font-size: 16px;
+  letter-spacing: 3px;
+  color: #6ee7b7;
+}
+.inventory-close {
+  width: 36px; height: 36px;
+  border-radius: 10px;
+  border: 1px solid #2a2a40;
+  background: rgba(40, 40, 60, 0.8);
+  color: #e8e8f0;
+  font-size: 16px;
+  cursor: pointer;
+}
+.inventory-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+}
+.inventory-item {
+  background: rgba(30, 30, 50, 0.8);
+  border: 1px solid #2a2a40;
+  border-radius: 12px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.item-icon { font-size: 28px; }
+.item-name { font-size: 13px; font-weight: 700; }
+.item-desc { font-size: 10px; color: #9aa0b0; }
+.item-count { font-size: 11px; color: #6ee7b7; font-weight: 700; }
+.item-use {
+  padding: 8px;
+  border-radius: 8px;
+  border: 1px solid #3b82f6;
+  background: rgba(59, 130, 246, 0.25);
+  color: #60a5fa;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.item-use:active { transform: scale(0.97); }
+.inventory-empty {
+  text-align: center;
+  color: #6b7280;
+  font-size: 13px;
+  padding: 30px;
+}
+
+/* ---------- Modal Create/Join ---------- */
 .modal-screen {
   position: absolute;
   inset: 0;
@@ -540,114 +653,7 @@ html, body {
   min-height: 14px;
 }
 
-/* Inventory */
-#inventory-screen {
-  position: absolute;
-  inset: 0;
-  background: rgba(5, 5, 15, 0.85);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 250;
-  padding: 20px;
-}
-.inventory-panel {
-  width: 100%;
-  max-width: 420px;
-  max-height: 80vh;
-  overflow-y: auto;
-  background: rgba(20, 20, 40, 0.98);
-  border: 1px solid #2a2a40;
-  border-radius: 16px;
-  padding: 20px;
-}
-.inventory-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 16px;
-}
-.inventory-header h2 {
-  font-size: 16px;
-  letter-spacing: 3px;
-  color: #6ee7b7;
-}
-.inventory-close {
-  width: 36px; height: 36px;
-  border-radius: 10px;
-  border: 1px solid #2a2a40;
-  background: rgba(40, 40, 60, 0.8);
-  color: #e8e8f0;
-  font-size: 16px;
-  cursor: pointer;
-}
-.inventory-grid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 10px;
-}
-.inventory-item {
-  background: rgba(30, 30, 50, 0.8);
-  border: 1px solid #2a2a40;
-  border-radius: 12px;
-  padding: 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-.item-icon { font-size: 28px; }
-.item-name { font-size: 13px; font-weight: 700; }
-.item-desc { font-size: 10px; color: #9aa0b0; }
-.item-count { font-size: 11px; color: #6ee7b7; font-weight: 700; }
-.item-use {
-  padding: 8px;
-  border-radius: 8px;
-  border: 1px solid #3b82f6;
-  background: rgba(59, 130, 246, 0.25);
-  color: #60a5fa;
-  font-size: 11px;
-  font-weight: 700;
-  cursor: pointer;
-}
-.item-use:active { transform: scale(0.97); }
-.inventory-empty {
-  text-align: center;
-  color: #6b7280;
-  font-size: 13px;
-  padding: 30px;
-}
-
-/* Toast notifikasi */
-#toast-container {
-  position: absolute;
-  top: 60px;
-  left: 50%;
-  transform: translateX(-50%);
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  pointer-events: none;
-  z-index: 80;
-  width: 90%;
-  max-width: 360px;
-}
-.toast {
-  padding: 10px 16px;
-  border-radius: 10px;
-  background: rgba(20, 20, 40, 0.95);
-  border: 1px solid #3b82f6;
-  color: #e8e8f0;
-  font-size: 12px;
-  text-align: center;
-  animation: toast-in 0.3s ease;
-}
-.toast.fade-out { opacity: 0; transition: opacity 0.4s; }
-@keyframes toast-in {
-  from { opacity: 0; transform: translateY(-8px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-/* History */
+/* ---------- History room ---------- */
 .history-list { display: flex; flex-direction: column; gap: 8px; }
 .history-room {
   display: flex;
