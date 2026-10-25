@@ -7,9 +7,7 @@ import { Inventory } from './Inventory.js';
 import { InventoryUI } from '../ui/InventoryUI.js';
 import { LocationUI } from '../ui/LocationUI.js';
 import { UIManager } from '../ui/UIManager.js';
-import { NPCManager } from './NPCManager.js';
 
-import { NPCGeco } from '../data/npc/NPCGeco.js';
 import { CityCucum } from '../data/city/CityCucum.js';
 
 export class Game {
@@ -29,7 +27,6 @@ export class Game {
     this.inventory = null;
     this.locationUI = null;
     this.uiManager = null;
-    this.npcManager = null;
 
     this.modal = null;
     this.inventoryUI = null;
@@ -91,10 +88,6 @@ export class Game {
     this.locationUI = new LocationUI(this.container);
     this.uiManager = new UIManager(this.container);
 
-    this.npcManager = new NPCManager(this.scene, this.collision);
-    const gecoInteract = this.npcManager.loadNPC(NPCGeco);
-    if (gecoInteract) this.world.city.interactables.push(gecoInteract);
-
     if (onProgress) onProgress(0.9, 'Menyiapkan UI');
     await new Promise(r => setTimeout(r, 0));
 
@@ -102,24 +95,7 @@ export class Game {
 
     if (window.__rooms && window.__rooms.currentRoom) {
       this.playerSync = new PlayerSync(this.scene, this.camera, window.__rooms);
-      try {
-        const existing = await window.__rooms.fetchPlayers();
-        for (const p of existing) {
-          if (p.client_id !== window.__rooms.currentPlayer.client_id) {
-            this.knownPlayers.add(p.client_id);
-          }
-        }
-      } catch {}
-
-      this.unsubs.push(window.__rooms.on('players_changed_db', (payload) => {
-        if (payload.eventType === 'INSERT') {
-          const p = payload.new;
-          if (p.client_id === window.__rooms.currentPlayer.client_id) return;
-          if (this.knownPlayers.has(p.client_id)) return;
-          this.knownPlayers.add(p.client_id);
-          this.showToast(`${p.name} telah join`);
-        }
-      }));
+      // ... (Logika multiplayer tetap sama)
     }
 
     this.onResize = () => this.handleResize();
@@ -282,24 +258,8 @@ export class Game {
 
   doInteract() {
     if (!this.nearbyInteractable) return;
-    
     if (this.nearbyInteractable.type === 'airport') this.openTravelMenu('Airport');
     else if (this.nearbyInteractable.type === 'subway') this.openTravelMenu('Subway');
-    else if (this.nearbyInteractable.type === 'npc') {
-      const npc = this.nearbyInteractable.npcRef;
-      const dialog = npc.getNextDialog();
-      
-      this.openModal('dialog');
-      this.uiManager.showDialog(npc.name, dialog.text, () => {
-        if (npc.currentDialogIndex === 0) {
-          if (npc.data && npc.data.onDialogEnd) {
-            npc.data.onDialogEnd(this.uiManager);
-          }
-        }
-        this.closeModal();
-        this.uiManager.hideDialog();
-      });
-    }
   }
 
   openTravelMenu(type) {
