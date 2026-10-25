@@ -5,6 +5,8 @@ import { Collision } from './Collision.js';
 import { PlayerSync } from '../multiplayer/PlayerSync.js';
 import { Inventory } from './Inventory.js';
 import { InventoryUI } from '../ui/InventoryUI.js';
+import { LocationUI } from '../ui/LocationUI.js';
+import { Minimap } from '../ui/Minimap.js';
 
 export class Game {
   constructor(container) {
@@ -17,10 +19,14 @@ export class Game {
     this.collision = new Collision();
     this.playerSync = null;
     this.inventory = null;
+    this.locationUI = null;
+    this.minimap = null;
 
     this.modal = null;
     this.inventoryUI = null;
     this.pauseEl = null;
+    this.interactBtn = null;
+    this.nearbyInteractable = null;
 
     this.running = false;
     this.clock = new THREE.Clock();
@@ -28,7 +34,6 @@ export class Game {
     this.buttonsEl = null;
     this.joyValue = { x: 0, y: 0 };
     this.isFullscreen = false;
-    this.isForcedLandscape = false; // Fallback kalau browser nolak lock
     this.unsubs = [];
 
     this.joyTouchId = null;
@@ -43,20 +48,16 @@ export class Game {
   async start(onProgress) {
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(0x9dc8e8);
-    
     this.renderDistance = 100;
     this.scene.fog = new THREE.Fog(0x9dc8e8, this.renderDistance * 0.4, this.renderDistance);
 
-    this.camera = new THREE.PerspectiveCamera(
-      72, window.innerWidth / window.innerHeight, 0.1, 1000
-    );
+    this.camera = new THREE.PerspectiveCamera(72, window.innerWidth / window.innerHeight, 0.1, 1000);
     this.camera.position.set(0, 1.6, 0);
     this.camera.rotation.order = 'YXZ';
 
     this.renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance' });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.25));
     this.renderer.setSize(window.innerWidth, window.innerHeight);
-    
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.BasicShadowMap; 
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -76,6 +77,9 @@ export class Game {
 
     this.inventory = new Inventory();
     this.inventory.add('water', 3);
+
+    this.locationUI = new LocationUI(this.container);
+    this.minimap = new Minimap(this.container);
 
     if (onProgress) onProgress(0.9, 'Menyiapkan UI');
     await new Promise(r => setTimeout(r, 0));
@@ -126,14 +130,27 @@ export class Game {
     `;
     this.container.appendChild(this.hudEl);
 
+    this.interactBtn = document.createElement('button');
+    this.interactBtn.id = 'btn-interact';
+    this.interactBtn.style.cssText = `
+      position: fixed; top: 60%; right: 20px; width: 60px; height: 60px;
+      border-radius: 50%; background: rgba(59,130,246,0.8); color: #fff;
+      border: 2px solid #fff; font-weight: bold; font-size: 16px;
+      display: none; align-items: center; justify-content: center;
+      z-index: 9999; cursor: pointer; pointer-events: auto;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+    `;
+    this.interactBtn.textContent = 'E';
+    this.interactBtn.addEventListener('click', () => this.doInteract());
+    document.body.appendChild(this.interactBtn);
+
+    window.addEventListener('keydown', (e) => {
+      if (e.code === 'KeyE') this.doInteract();
+    });
+
     this.joyBaseEl = document.createElement('div');
     this.joyBaseEl.id = 'joystick-base';
-    this.joyBaseEl.style.cssText = `
-      position: fixed; width: 100px; height: 100px; border-radius: 50%; 
-      background: rgba(255,255,255,0.2); border: 2px solid rgba(255,255,255,0.6); 
-      visibility: hidden; pointer-events: none; z-index: 99999;
-      transform: translate(-50%, -50%);
-    `;
+    this.joyBaseEl.style.cssText = `position: fixed; width: 100px; height: 100px; border-radius: 50%; background: rgba(255,255,255,0.2); border: 2px solid rgba(255,255,255,0.6); visibility: hidden; pointer-events: none; z-index: 99999; transform: translate(-50%, -50%);`;
     this.joyBaseEl.innerHTML = `<div id="joystick-knob" style="position: absolute; width: 44px; height: 44px; border-radius: 50%; background: rgba(255,255,255,0.8); top: 50%; left: 50%; transform: translate(-50%, -50%); pointer-events: none;"></div>`;
     document.body.appendChild(this.joyBaseEl);
 
@@ -174,6 +191,7 @@ export class Game {
     document.addEventListener('touchstart', (e) => {
       if (this.modal !== null) return;
       for (const t of e.changedTouches) {
+        if (t.target.closest('button')) continue;
         if (t.clientX < window.innerWidth / 2 && this.joyTouchId === null) {
           this.joyTouchId = t.identifier;
           this.joyCenter.x = t.clientX;
@@ -223,6 +241,82 @@ export class Game {
     document.addEventListener('touchcancel', endTouch, { passive: true });
   }
 
+  checkInteractables() {
+    if (this.modal !== null || !this.world.city) return;
+    
+    let nearest = null;
+    let minDist = Infinity;
+
+    for (const obj of this.world.city.interactables) {
+      const dist = this.camera.position.distanceTo(obj.position);
+      if (dist < obj.radius && dist < minDist) {
+        minDist = dist;
+        nearest = obj;
+      }
+    }
+
+    if (nearest) {
+      if (this.nearbyInteractable !== nearest) {
+        this.nearbyInteractable = nearest;
+        this.interactBtn.style.display = 'flex';
+      }
+    } else {
+      this.nearbyInteractable = null;
+      this.interactBtn.style.display = 'none';
+    }
+  }
+
+  doInteract() {
+    if (!this.nearbyInteractable) return;
+
+    if (this.nearbyInteractable.type === 'airport') {
+      this.openTravelMenu('Airport');
+    } else if (this.nearbyInteractable.type === 'subway') {
+      this.openTravelMenu('Subway');
+    }
+  }
+
+  openTravelMenu(type) {
+    if (!this.openModal('travel')) return;
+    this.pauseEl = document.createElement('div');
+    this.pauseEl.id = 'pause-menu';
+    this.pauseEl.style.cssText = `position: fixed; inset: 0; background: rgba(5,5,15,0.9); display: flex; align-items: center; justify-content: center; z-index: 9999; pointer-events: auto; padding: 24px;`;
+    
+    const destinations = type === 'Airport' 
+      ? [{ city: 'Malang', country: 'Forge' }, { city: 'Jeddah', country: 'Saudi' }]
+      : [{ city: 'Surabaya', country: 'Forge' }];
+
+    let html = `<div style="width: 100%; max-width: 400px; background: rgba(20,20,40,0.98); border: 1px solid #2a2a40; border-radius: 16px; padding: 24px; display: flex; flex-direction: column; gap: 12px;">
+      <h2 style="font-size: 18px; font-weight: 700; letter-spacing: 3px; text-align: center; margin-bottom: 8px; color: #6ee7b7;">${type.toUpperCase()} TICKET</h2>`;
+    
+    for (const d of destinations) {
+      html += `<button class="dest-btn" data-city="${d.city}" data-country="${d.country}" style="padding: 14px; border-radius: 10px; border: 1px solid #2a2a40; background: rgba(40,40,60,0.8); color: #e8e8f0; font-size: 15px; font-weight: 600; cursor: pointer; text-align: left;">
+        <div style="font-size: 16px; font-weight: 800; color: #fff;">${d.city}</div>
+        <div style="font-size: 12px; color: #9aa0b0;">${d.country} - $50</div>
+      </button>`;
+    }
+
+    html += `<button id="close-travel" style="padding: 14px; border-radius: 10px; border: 1px solid #b03030; background: rgba(180,40,40,0.6); color: #e8e8f0; font-weight: 600; margin-top: 10px; cursor: pointer;">BATAL</button></div>`;
+    
+    this.pauseEl.innerHTML = html;
+    document.body.appendChild(this.pauseEl);
+
+    this.pauseEl.querySelector('#close-travel').addEventListener('click', () => this.closeModal());
+    
+    this.pauseEl.querySelectorAll('.dest-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const city = btn.dataset.city;
+        const country = btn.dataset.country;
+        this.closeModal();
+        
+        this.locationUI.showTeleportScreen(country, city, () => {
+          this.camera.position.set(0, 1.6, 0);
+          this.showToast(`Selamat datang di ${city}, ${country}!`);
+        });
+      });
+    });
+  }
+
   openModal(kind) {
     if (this.modal === kind) return false;
     if (this.modal !== null) this.closeModal();
@@ -235,7 +329,9 @@ export class Game {
     const kind = this.modal;
     this.modal = null;
     if (kind === 'inventory' && this.inventoryUI) { this.inventoryUI.hide(); this.inventoryUI = null; }
-    if (kind === 'pause' && this.pauseEl) { this.pauseEl.remove(); this.pauseEl = null; }
+    if (kind === 'pause' || kind === 'travel') { 
+      if(this.pauseEl) { this.pauseEl.remove(); this.pauseEl = null; }
+    }
     this.joyTouchId = null; this.lookTouchId = null;
     this.joyValue.x = 0; this.joyValue.y = 0;
     if (this.joyBaseEl) this.joyBaseEl.style.visibility = 'hidden';
@@ -296,35 +392,25 @@ export class Game {
     setTimeout(() => { toast.style.opacity = '0'; toast.style.transition = 'opacity 0.4s'; setTimeout(() => toast.remove(), 400); }, 3000);
   }
 
-  // --- FIX FULLSCREEN & AUTO ROTATE ---
   async toggleFullscreen() {
     try {
       if (!document.fullscreenElement) {
         await document.documentElement.requestFullscreen({ navigationUI: 'hide' });
-        
-        // Tunggu 100ms agar browser siap transisi
         setTimeout(() => {
           if (screen.orientation && screen.orientation.lock) {
-            screen.orientation.lock('landscape').catch((err) => {
-              console.warn("Auto-rotate ditolak browser, pakai fallback CSS", err);
-              this.forceLandscapeCSS();
-            });
+            screen.orientation.lock('landscape').catch(() => this.forceLandscapeCSS());
           } else {
             this.forceLandscapeCSS();
           }
         }, 100);
-
       } else {
-        if (screen.orientation && screen.orientation.unlock) {
-          screen.orientation.unlock();
-        }
+        if (screen.orientation && screen.orientation.unlock) screen.orientation.unlock();
         this.removeForceLandscapeCSS();
         await document.exitFullscreen();
       }
     } catch (err) { console.warn('Fullscreen failed:', err.message); }
   }
 
-  // Fallback CSS kalau browser kunci orientasi
   forceLandscapeCSS() {
     if (this.isForcedLandscape) return;
     this.isForcedLandscape = true;
@@ -335,8 +421,6 @@ export class Game {
     this.container.style.position = 'absolute';
     this.container.style.top = '-100vw';
     this.container.style.left = '0';
-    
-    // Paksa resize canvas
     setTimeout(() => this.handleResize(), 100);
   }
 
@@ -349,7 +433,6 @@ export class Game {
     this.container.style.position = 'relative';
     this.container.style.top = '0';
     this.container.style.left = '0';
-    
     setTimeout(() => this.handleResize(), 100);
   }
 
@@ -363,14 +446,9 @@ export class Game {
   }
 
   handleResize() {
-    // Kalkulasi ukuran canvas berdasarkan orientasi saat ini
     let w = window.innerWidth;
     let h = window.innerHeight;
-    if (this.isForcedLandscape) {
-      w = window.innerHeight;
-      h = window.innerWidth;
-    }
-    
+    if (this.isForcedLandscape) { w = window.innerHeight; h = window.innerWidth; }
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
     this.renderer.setSize(w, h);
@@ -385,6 +463,11 @@ export class Game {
       this.controls.update(dt);
       if (this.playerSync) this.playerSync.update(dt);
       if (this.world) this.world.updateAnimals(dt);
+      this.checkInteractables();
+      
+      if (this.minimap) {
+        this.minimap.update(this.camera.position, this.controls.yaw, this.world.city.interactables);
+      }
     }
     this.renderer.render(this.scene, this.camera);
   }
@@ -401,6 +484,7 @@ export class Game {
     if (this.renderer?.domElement?.parentNode) this.renderer.domElement.parentNode.removeChild(this.renderer.domElement);
     if (this.joyBaseEl?.parentNode) this.joyBaseEl.parentNode.removeChild(this.joyBaseEl);
     if (this.buttonsEl?.parentNode) this.buttonsEl.parentNode.removeChild(this.buttonsEl);
+    if (this.interactBtn?.parentNode) this.interactBtn.parentNode.removeChild(this.interactBtn);
     this.container.innerHTML = '';
   }
 }
