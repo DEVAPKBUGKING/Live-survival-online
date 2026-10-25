@@ -23,10 +23,6 @@ export class Game {
     this.playerSync = null;
     this.inventory = null;
     this.locationUI = null;
-    
-    // Variabel Minimap
-    this.minimapCanvas = null;
-    this.minimapCtx = null;
 
     this.modal = null;
     this.inventoryUI = null;
@@ -53,6 +49,16 @@ export class Game {
   }
 
   async start(onProgress) {
+    // --- KOTAK MERAH TES ---
+    const testBox = document.createElement('div');
+    testBox.style.cssText = `
+      position: fixed; top: 10px; left: 10px; width: 100px; height: 100px;
+      background: red; z-index: 999999; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold;
+    `;
+    testBox.textContent = 'TES';
+    document.body.appendChild(testBox);
+    // -----------------------
+
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(0x9dc8e8);
     this.renderDistance = 100;
@@ -91,7 +97,6 @@ export class Game {
     await new Promise(r => setTimeout(r, 0));
 
     this.createHUD();
-    this.createMinimap(); // Panggil pembuat minimap
 
     if (window.__rooms && window.__rooms.currentRoom) {
       this.playerSync = new PlayerSync(this.scene, this.camera, window.__rooms);
@@ -124,76 +129,6 @@ export class Game {
 
     this.running = true;
     this.animate();
-  }
-
-  createMinimap() {
-    this.minimapCanvas = document.createElement('canvas');
-    this.minimapCanvas.width = 160;
-    this.minimapCanvas.height = 160;
-    this.minimapCanvas.style.cssText = `
-      position: fixed; top: 16px; left: 16px; z-index: 999999;
-      background: rgba(10, 10, 20, 0.7); border: 2px solid #6ee7b7;
-      border-radius: 10px; pointer-events: none;
-      box-shadow: 0 4px 10px rgba(0,0,0,0.8);
-    `;
-    document.body.appendChild(this.minimapCanvas);
-    this.minimapCtx = this.minimapCanvas.getContext('2d');
-  }
-
-  drawMinimap() {
-    if (!this.minimapCtx) return;
-    const ctx = this.minimapCtx;
-    const w = 160, h = 160;
-    const cx = w / 2, cy = h / 2;
-    const scale = 0.5; // Skala dunia ke pixel
-
-    ctx.clearRect(0, 0, w, h);
-    
-    // Background
-    ctx.fillStyle = '#2a4a2a';
-    ctx.fillRect(0, 0, w, h);
-
-    ctx.save();
-    ctx.translate(cx, cy);
-    
-    // Rotasi peta sesuai arah hadap kamera (Yaw)
-    // Di Three.js yaw 0 = -Z. Di Canvas 2D, atas = -Y. Maka putar 180 derajat (Math.PI).
-    ctx.rotate(-this.controls.yaw);
-
-    // Gambar Jalan (Abu-abu)
-    ctx.fillStyle = '#555';
-    // Posisi jalan di dunia: x=0, z=-50, lebar=12, panjang=200
-    ctx.fillRect(-6 * scale, -50 * scale, 12 * scale, 200 * scale);
-
-    // Gambar Interactables (Bandara, dll)
-    if (this.world.city && this.world.city.interactables) {
-      for (const obj of this.world.city.interactables) {
-        const dx = (obj.position.x - this.camera.position.x) * scale;
-        const dz = (obj.position.z - this.camera.position.z) * scale;
-        
-        ctx.beginPath();
-        ctx.arc(dx, dz, 6, 0, Math.PI * 2);
-        ctx.fillStyle = obj.type === 'airport' ? '#3b82f6' : '#ef4444';
-        ctx.fill();
-      }
-    }
-
-    // Gambar Pemain (Titik Kuning di tengah)
-    ctx.beginPath();
-    ctx.arc(0, 0, 6, 0, Math.PI * 2);
-    ctx.fillStyle = '#fbbf24';
-    ctx.fill();
-
-    // Arah Pandang Pemain (Segitiga Putih)
-    ctx.beginPath();
-    ctx.moveTo(0, -10);
-    ctx.lineTo(-6, 6);
-    ctx.lineTo(6, 6);
-    ctx.closePath();
-    ctx.fillStyle = '#fff';
-    ctx.fill();
-
-    ctx.restore();
   }
 
   createHUD() {
@@ -536,7 +471,6 @@ export class Game {
       if (this.playerSync) this.playerSync.update(dt);
       if (this.world) this.world.updateAnimals(dt);
       this.checkInteractables();
-      this.drawMinimap(); // Panggil drawMinimap
     }
     this.renderer.render(this.scene, this.camera);
   }
@@ -554,7 +488,6 @@ export class Game {
     if (this.joyBaseEl?.parentNode) this.joyBaseEl.parentNode.removeChild(this.joyBaseEl);
     if (this.buttonsEl?.parentNode) this.buttonsEl.parentNode.removeChild(this.buttonsEl);
     if (this.interactBtn?.parentNode) this.interactBtn.parentNode.removeChild(this.interactBtn);
-    if (this.minimapCanvas?.parentNode) this.minimapCanvas.parentNode.removeChild(this.minimapCanvas);
     this.container.innerHTML = '';
   }
 }
