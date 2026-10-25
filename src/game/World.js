@@ -31,45 +31,43 @@ export class World {
   }
 
   buildLighting() {
-    // Ambient Light untuk dasar yang terang
+    // Pencahayaan dasar (enteng, tanpa bayangan)
     const hemi = new THREE.HemisphereLight(0xaaccff, 0x4a7c3f, 1.2);
     this.scene.add(hemi);
 
-    // Sunlight (PCF Soft Shadow)
-    const sun = new THREE.DirectionalLight(0xfff2d5, 1.5);
+    // Matahari
+    const sun = new THREE.DirectionalLight(0xfff2d5, 1.2);
     sun.position.set(30, 50, 20);
     sun.castShadow = true;
     
-    // Resolusi bayangan lebih tinggi dikit biar ga kaku
-    sun.shadow.mapSize.set(1024, 1024); 
+    // Turunin resolusi shadow map biar enteng
+    sun.shadow.mapSize.set(512, 512); 
     sun.shadow.camera.left = -45;
     sun.shadow.camera.right = 45;
     sun.shadow.camera.top = 45;
     sun.shadow.camera.bottom = -45;
     sun.shadow.camera.near = 1;
     sun.shadow.camera.far = 120;
-    sun.shadow.bias = -0.0005; // Ngurangin bayangan bergaris (acne)
+    sun.shadow.bias = -0.001; 
     
     this.scene.add(sun);
 
-    // Fill light biar bagian gelap ga terlalu hitam
-    const fill = new THREE.DirectionalLight(0x88aaff, 0.4);
-    fill.position.set(-20, 10, -10);
-    this.scene.add(fill);
-    
-    // Lampu di dalam rumah biar ga gelap gulita
+    // Lampu indoor
     const roomLight = new THREE.PointLight(0xffeedd, 1.5, 20);
     roomLight.position.set(0, 2.5, 0);
     this.scene.add(roomLight);
   }
 
   buildGround() {
+    // Lantai dasar
     const groundMat = new THREE.MeshLambertMaterial({ color: 0x5a8f4a });
     const ground = new THREE.Mesh(new THREE.PlaneGeometry(100, 100), groundMat);
     ground.rotation.x = -Math.PI / 2;
+    ground.position.y = -0.1; // Ditarik ke bawah biar ga z-fighting
     ground.receiveShadow = true;
     this.scene.add(ground);
 
+    // Jalan Raya
     const roadMat = new THREE.MeshLambertMaterial({ color: 0x3a3a3a });
     const road = new THREE.Mesh(new THREE.PlaneGeometry(6, 40), roadMat);
     road.rotation.x = -Math.PI / 2;
@@ -77,29 +75,23 @@ export class World {
     road.receiveShadow = true;
     this.scene.add(road);
 
+    // Marka Jalan
     const stripeMat = new THREE.MeshLambertMaterial({ color: 0xd4b040 });
     for (let i = 0; i < 6; i++) {
       const stripe = new THREE.Mesh(new THREE.PlaneGeometry(0.3, 2), stripeMat);
       stripe.rotation.x = -Math.PI / 2;
       stripe.position.set(0, 0.02, -34 + i * 6);
+      // FIX: Jangan gambar marka kalau posisinya masuk ke area rumah (Z antara -5 sampai 5)
+      if (stripe.position.z > -5 && stripe.position.z < 5) continue;
       this.scene.add(stripe);
     }
-
-    const sideMat = new THREE.MeshLambertMaterial({ color: 0x9a9a9a });
-    const sidewalkL = new THREE.Mesh(new THREE.PlaneGeometry(1.2, 40), sideMat);
-    sidewalkL.rotation.x = -Math.PI / 2;
-    sidewalkL.position.set(-3.6, 0.02, -18);
-    this.scene.add(sidewalkL);
-    const sidewalkR = sidewalkL.clone();
-    sidewalkR.position.x = 3.6;
-    this.scene.add(sidewalkR);
   }
 
   buildHouse() {
     const floorMat = new THREE.MeshLambertMaterial({ color: 0xa07f5a });
     const floor = new THREE.Mesh(new THREE.PlaneGeometry(10, 10), floorMat);
     floor.rotation.x = -Math.PI / 2;
-    floor.position.set(0, 0.02, 0);
+    floor.position.set(0, 0.05, 0); // FIX: Lantai rumah dinaikkan biar ga ketimpa jalan
     floor.receiveShadow = true;
     this.scene.add(floor);
 
@@ -117,14 +109,14 @@ export class World {
     const header = this.addBox(0, wallHeight - 0.3, 5, 1.2, 0.6, wallThick, wallMat);
     header.castShadow = true;
 
-    // ROOF FIX: Dibikin lebih lebar biar nutupin dinding
+    // Atap
     const roofMat = new THREE.MeshLambertMaterial({ color: 0x8a3a1a });
     const roof = new THREE.Mesh(new THREE.BoxGeometry(10.8, 0.3, 10.8), roofMat);
     roof.position.set(0, wallHeight + 0.15, 0);
     roof.castShadow = true;
-    roof.receiveShadow = true;
     this.scene.add(roof);
 
+    // Furnitur
     const bedFrame = new THREE.MeshLambertMaterial({ color: 0x6b3e2b });
     const bed = this.addBox(-3.5, 0.25, -3.5, 1.2, 0.5, 2, bedFrame);
     bed.castShadow = true;
@@ -153,6 +145,9 @@ export class World {
     this.collision.addBox(-4.9, 0, 2.65, -3.1, 0.9, 3.35);
   }
 
+  // ... Sisa fungsi buildTrees, buildNature, buildAnimals, dll sama persis kayak kode lu sebelumnya, 
+  // tapi panggil `super` atau copy aja fungsinya di bawah ini biar aman.
+  
   buildTrees() {
     const trunkMat = new THREE.MeshLambertMaterial({ color: 0x5a3e2b });
     const leafMats = [
