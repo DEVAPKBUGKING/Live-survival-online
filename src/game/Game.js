@@ -11,7 +11,7 @@ import { UIManager } from '../ui/UIManager.js';
 export class Game {
   constructor(container, profile) {
     this.container = container;
-    this.profile = profile; // Data dari Supabase (uang, ktp, admin)
+    this.profile = profile;
     this.isGodMode = false;
 
     this.container.style.position = 'absolute';
@@ -29,7 +29,6 @@ export class Game {
     this.locationUI = null;
     this.uiManager = null;
 
-    // Variabel Minimap
     this.minimapCanvas = null;
     this.minimapCtx = null;
 
@@ -58,82 +57,101 @@ export class Game {
   }
 
   async start(onProgress) {
-    this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(0x9dc8e8);
-    this.renderDistance = 150;
-    this.scene.fog = new THREE.Fog(0x9dc8e8, this.renderDistance * 0.4, this.renderDistance);
+    try {
+      // 1. SETUP 3D DASAR (PALING PENTING)
+      this.scene = new THREE.Scene();
+      this.scene.background = new THREE.Color(0x9dc8e8);
+      this.renderDistance = 150;
+      this.scene.fog = new THREE.Fog(0x9dc8e8, this.renderDistance * 0.4, this.renderDistance);
 
-    this.camera = new THREE.PerspectiveCamera(72, window.innerWidth / window.innerHeight, 0.1, 1000);
-    this.camera.position.set(0, 1.6, 0);
-    this.camera.rotation.order = 'YXZ';
+      this.camera = new THREE.PerspectiveCamera(72, window.innerWidth / window.innerHeight, 0.1, 1000);
+      this.camera.position.set(0, 1.6, 0);
+      this.camera.rotation.order = 'YXZ';
 
-    this.renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance' });
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.25));
-    this.renderer.setSize(window.innerWidth, window.innerHeight);
-    this.renderer.shadowMap.enabled = true;
-    this.renderer.shadowMap.type = THREE.BasicShadowMap; 
-    this.renderer.outputColorSpace = THREE.SRGBColorSpace;
-    this.container.appendChild(this.renderer.domElement);
+      this.renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance' });
+      this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.25));
+      this.renderer.setSize(window.innerWidth, window.innerHeight);
+      this.renderer.shadowMap.enabled = true;
+      this.renderer.shadowMap.type = THREE.BasicShadowMap; 
+      this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+      this.container.appendChild(this.renderer.domElement);
 
-    if (onProgress) onProgress(0.1, 'Menyiapkan renderer');
-    await new Promise(r => setTimeout(r, 0));
+      if (onProgress) onProgress(0.1, 'Menyiapkan renderer');
+      await new Promise(r => setTimeout(r, 0));
 
-    this.world = new World(this.scene, this.collision, null);
-    await this.world.build((p, label) => {
-      if (onProgress) onProgress(0.1 + p * 0.7, label);
-    });
+      // 2. BANGUN DUNIA (GEDUNG, JALAN, DLL)
+      this.world = new World(this.scene, this.collision, null);
+      await this.world.build((p, label) => {
+        if (onProgress) onProgress(0.1 + p * 0.7, label);
+      });
 
-    this.controls = new Controls(this.camera, this.renderer.domElement, this.collision);
-    this.controls.enable();
-    this.controls.setJoystick(this.joyValue);
+      // 3. KONTROL & INVENTORY
+      this.controls = new Controls(this.camera, this.renderer.domElement, this.collision);
+      this.controls.enable();
+      this.controls.setJoystick(this.joyValue);
 
-    this.inventory = new Inventory();
-    this.inventory.add('water', 3);
+      this.inventory = new Inventory();
+      this.inventory.add('water', 3);
 
-    this.locationUI = new LocationUI(this.container);
-    this.uiManager = new UIManager(this.container, this.profile);
-
-    if (onProgress) onProgress(0.9, 'Menyiapkan UI');
-    await new Promise(r => setTimeout(r, 0));
-
-    this.createHUD();
-    this.createMinimap();
-
-    if (window.__rooms && window.__rooms.currentRoom) {
-      this.playerSync = new PlayerSync(this.scene, this.camera, window.__rooms);
+      // 4. UI (KALAU INI ERROR, GAME TETEP JALAN)
       try {
-        const existing = await window.__rooms.fetchPlayers();
-        for (const p of existing) {
-          if (p.client_id !== window.__rooms.currentPlayer.client_id) {
-            this.knownPlayers.add(p.client_id);
+        this.locationUI = new LocationUI(this.container);
+        this.uiManager = new UIManager(this.container, this.profile);
+      } catch (uiErr) {
+        console.warn("UI gagal dimuat, lanjut ke 3D:", uiErr);
+      }
+
+      if (onProgress) onProgress(0.9, 'Menyiapkan UI');
+      await new Promise(r => setTimeout(r, 0));
+
+      this.createHUD();
+      this.createMinimap();
+
+      // 5. MULTIPLAYER (KALAU INI GAGAL, GAME TETEP JALAN)
+      try {
+        if (window.__rooms && window.__rooms.currentRoom) {
+          this.playerSync = new PlayerSync(this.scene, this.camera, window.__rooms);
+          const existing = await window.__rooms.fetchPlayers();
+          for (const p of existing) {
+            if (p.client_id !== window.__rooms.currentPlayer.client_id) {
+              this.knownPlayers.add(p.client_id);
+            }
           }
-        }
-      } catch {}
 
-      this.unsubs.push(window.__rooms.on('players_changed_db', (payload) => {
-        if (payload.eventType === 'INSERT') {
-          const p = payload.new;
-          if (p.client_id === window.__rooms.currentPlayer.client_id) return;
-          if (this.knownPlayers.has(p.client_id)) return;
-          this.knownPlayers.add(p.client_id);
-          this.showToast(`${p.name} telah join`);
+          this.unsubs.push(window.__rooms.on('players_changed_db', (payload) => {
+            if (payload.eventType === 'INSERT') {
+              const p = payload.new;
+              if (p.client_id === window.__rooms.currentPlayer.client_id) return;
+              if (this.knownPlayers.has(p.client_id)) return;
+              this.knownPlayers.add(p.client_id);
+              this.showToast(`${p.name} telah join`);
+            }
+          }));
         }
-      }));
+      } catch (mpErr) {
+        console.warn("Multiplayer gagal sync, lanjut single player:", mpErr);
+      }
+
+      this.onResize = () => this.handleResize();
+      window.addEventListener('resize', this.onResize);
+      window.addEventListener('orientationchange', this.onResize);
+
+      this.renderer.render(this.scene, this.camera);
+      if (onProgress) onProgress(1, 'Selesai');
+
+      // 6. JALANKAN GAME
+      this.running = true;
+      this.animate();
+
+    } catch (err) {
+      console.error("FATAL ERROR DI GAME.START:", err);
+      if (onProgress) onProgress(1, 'Error: ' + err.message);
     }
-
-    this.onResize = () => this.handleResize();
-    window.addEventListener('resize', this.onResize);
-    window.addEventListener('orientationchange', this.onResize);
-
-    this.renderer.render(this.scene, this.camera);
-    if (onProgress) onProgress(1, 'Selesai');
-
-    this.running = true;
-    this.animate();
   }
 
   createMinimap() {
     this.minimapCanvas = document.createElement('canvas');
+    this.minimapCanvas.id = 'minimap-canvas';
     this.minimapCanvas.width = 160;
     this.minimapCanvas.height = 160;
     this.minimapCanvas.style.cssText = `
@@ -161,17 +179,14 @@ export class Game {
     ctx.translate(cx, cy);
     ctx.rotate(-this.controls.yaw);
 
-    // Jalan
     ctx.fillStyle = '#555';
     ctx.fillRect(-10 * scale, -300 * scale, 20 * scale, 600 * scale);
 
-    // Titik Pemain (Kuning)
     ctx.beginPath();
     ctx.arc(0, 0, 6, 0, Math.PI * 2);
     ctx.fillStyle = '#fbbf24';
     ctx.fill();
 
-    // Arah Pandang (Putih)
     ctx.beginPath();
     ctx.moveTo(0, -10);
     ctx.lineTo(-6, 6);
@@ -229,7 +244,6 @@ export class Game {
       <button id="btn-settings" style="${btnStyle}">⚙</button>
     `;
     
-    // FITUR ADMIN (GOD MODE)
     if (this.profile && this.profile.is_admin) {
       const adminBtn = document.createElement('button');
       adminBtn.style.cssText = btnStyle + "background: rgba(220, 38, 38, 0.8); border-color: #ef4444;";
@@ -242,7 +256,7 @@ export class Game {
     this.setupTouchControls();
 
     this.buttonsEl.querySelector('#btn-inventory').addEventListener('click', (e) => { e.stopPropagation(); this.openInventory(); });
-    this.buttonsEl.querySelector('#btn-license').addEventListener('click', (e) => { e.stopPropagation(); this.uiManager.showLicense(); });
+    this.buttonsEl.querySelector('#btn-license').addEventListener('click', (e) => { e.stopPropagation(); if(this.uiManager) this.uiManager.showLicense(); });
     this.buttonsEl.querySelector('#btn-fullscreen').addEventListener('click', (e) => { e.stopPropagation(); this.toggleFullscreen(); });
     this.buttonsEl.querySelector('#btn-settings').addEventListener('click', (e) => { e.stopPropagation(); this.openPauseMenu(); });
   }
@@ -395,16 +409,18 @@ export class Game {
         const country = btn.dataset.country;
         this.closeModal();
         
-        if (this.uiManager.money < 50) {
+        if (this.uiManager && this.uiManager.money < 50) {
           this.showToast("Uang tidak cukup!");
           return;
         }
-        this.uiManager.addMoney(-50);
+        if (this.uiManager) this.uiManager.addMoney(-50);
 
-        this.locationUI.showTeleportScreen(country, city, () => {
-          this.camera.position.set(0, 1.6, 0);
-          this.showToast(`Selamat datang di ${city}, ${country}!`);
-        });
+        if (this.locationUI) {
+          this.locationUI.showTeleportScreen(country, city, () => {
+            this.camera.position.set(0, 1.6, 0);
+            this.showToast(`Selamat datang di ${city}, ${country}!`);
+          });
+        }
       });
     });
   }
