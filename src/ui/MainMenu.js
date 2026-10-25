@@ -1,7 +1,7 @@
 export class MainMenu {
   constructor(container, actions) {
     this.container = container;
-    this.actions = actions; // { onPlay, onCreate, onJoin, onSettings }
+    this.actions = actions;
     this.el = null;
   }
 
@@ -17,7 +17,7 @@ export class MainMenu {
         <button data-action="join">JOIN ROOM</button>
         <button data-action="settings">SETTINGS</button>
       </div>
-      <div class="version">v0.2.0 — Tahap 2</div>
+      <div class="version">v0.3.0 — Tahap 3</div>
     `;
 
     this.el.querySelectorAll('button').forEach(btn => {
