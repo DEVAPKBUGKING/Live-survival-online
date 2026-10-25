@@ -30,6 +30,7 @@ export class Game {
     this.isFullscreen = false;
     this.unsubs = [];
 
+    // Touch State
     this.joyTouchId = null;
     this.lookTouchId = null;
     this.joyCenter = { x: 0, y: 0 };
@@ -67,11 +68,6 @@ export class Game {
       if (onProgress) onProgress(0.1 + p * 0.7, label);
     });
 
-    // TAMBAHAN: Cahaya di dalam rumah biar ga gelap gulita
-    const roomLight = new THREE.PointLight(0xffffff, 1.5, 15);
-    roomLight.position.set(0, 2.5, 0);
-    this.scene.add(roomLight);
-
     this.controls = new Controls(this.camera, this.renderer.domElement, this.collision);
     this.controls.enable();
     this.controls.setJoystick(this.joyValue);
@@ -88,7 +84,6 @@ export class Game {
 
     if (window.__rooms && window.__rooms.currentRoom) {
       this.playerSync = new PlayerSync(this.scene, this.camera, window.__rooms);
-
       try {
         const existing = await window.__rooms.fetchPlayers();
         for (const p of existing) {
@@ -122,29 +117,25 @@ export class Game {
   }
 
   createHUD() {
-    // HUD Utama (Kamera & Joystick)
+    // HUD Visual
     this.hudEl = document.createElement('div');
     this.hudEl.id = 'game-hud';
     this.hudEl.style.cssText = `position: absolute; inset: 0; pointer-events: none; z-index: 50;`;
     this.hudEl.innerHTML = `
       <div id="crosshair" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 6px; height: 6px; border-radius: 50%; background: rgba(255,255,255,0.75); box-shadow: 0 0 6px rgba(0,0,0,0.6);"></div>
       
-      <div id="joystick-zone" style="position: absolute; left: 0; bottom: 0; width: 50%; height: 50%; pointer-events: auto; touch-action: none;"></div>
-      
-      <div id="joystick-base" style="position: absolute; width: 100px; height: 100px; border-radius: 50%; background: rgba(255,255,255,0.15); border: 2px solid rgba(255,255,255,0.3); opacity: 0; transition: opacity 0.1s; pointer-events: none;">
+      <div id="joystick-base" style="position: fixed; width: 100px; height: 100px; border-radius: 50%; background: rgba(255,255,255,0.15); border: 2px solid rgba(255,255,255,0.3); opacity: 0; transition: opacity 0.1s; pointer-events: none; z-index: 60;">
         <div id="joystick-knob" style="position: absolute; width: 44px; height: 44px; border-radius: 50%; background: rgba(255,255,255,0.5); top: 50%; left: 50%; transform: translate(-50%, -50%); pointer-events: none;"></div>
       </div>
-      
-      <div id="look-zone" style="position: absolute; right: 0; top: 0; width: 50%; height: 100%; pointer-events: auto; touch-action: none;"></div>
       
       <div id="toast-container" style="position: absolute; top: 72px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; gap: 8px; pointer-events: none; z-index: 80; width: 90%; max-width: 360px;"></div>
     `;
     this.container.appendChild(this.hudEl);
 
-    // Tombol HUD
+    // Tombol HUD (Paling atas)
     this.buttonsEl = document.createElement('div');
     this.buttonsEl.id = 'hud-buttons';
-    this.buttonsEl.style.cssText = `position: absolute; top: 12px; right: 12px; display: flex; gap: 8px; pointer-events: auto; z-index: 300;`;
+    this.buttonsEl.style.cssText = `position: fixed; top: 12px; right: 12px; display: flex; gap: 8px; pointer-events: auto; z-index: 9999;`;
     
     const btnStyle = `width: 48px; height: 48px; border-radius: 12px; background: rgba(0,0,0,0.7); border: 1px solid rgba(255,255,255,0.3); color: #fff; font-size: 22px; display: flex; align-items: center; justify-content: center; cursor: pointer; touch-action: manipulation;`;
 
@@ -155,16 +146,14 @@ export class Game {
     `;
     this.container.appendChild(this.buttonsEl);
 
-    this.setupJoystick();
-    this.setupLookZone();
+    this.setupTouchControls();
 
     this.buttonsEl.querySelector('#btn-inventory').addEventListener('click', (e) => { e.stopPropagation(); this.openInventory(); });
     this.buttonsEl.querySelector('#btn-fullscreen').addEventListener('click', (e) => { e.stopPropagation(); this.toggleFullscreen(); });
     this.buttonsEl.querySelector('#btn-settings').addEventListener('click', (e) => { e.stopPropagation(); this.openPauseMenu(); });
   }
 
-  setupJoystick() {
-    const zone = this.hudEl.querySelector('#joystick-zone');
+  setupTouchControls() {
     const base = this.hudEl.querySelector('#joystick-base');
     const knob = this.hudEl.querySelector('#joystick-knob');
 
@@ -179,78 +168,65 @@ export class Game {
       this.joyValue.y = ky / this.joyRadius;
     };
 
-    zone.addEventListener('touchstart', (e) => {
+    // Event Listener dipasang di document, bukan di div
+    document.addEventListener('touchstart', (e) => {
       if (this.modal !== null) return;
-      if (this.joyTouchId !== null) return;
-      const t = e.changedTouches[0];
-      this.joyTouchId = t.identifier;
-      this.joyCenter.x = t.clientX;
-      this.joyCenter.y = t.clientY;
-      base.style.position = 'fixed';
-      base.style.left = (t.clientX - this.joyRadius) + 'px';
-      base.style.top = (t.clientY - this.joyRadius) + 'px';
-      base.style.opacity = '1';
-      updateKnob(0, 0);
-      e.preventDefault();
-    }, { passive: false });
 
-    zone.addEventListener('touchmove', (e) => {
-      if (this.modal !== null || this.joyTouchId === null) return;
+      // Jika tap kena tombol HUD, abaikan
+      if (e.target.closest('#hud-buttons') || e.target.closest('#pause-menu') || e.target.closest('#inventory-screen')) return;
+
+      for (const t of e.changedTouches) {
+        // Setengah kiri layar = Joystick
+        if (t.clientX < window.innerWidth / 2 && this.joyTouchId === null) {
+          this.joyTouchId = t.identifier;
+          this.joyCenter.x = t.clientX;
+          this.joyCenter.y = t.clientY;
+          base.style.left = (t.clientX - this.joyRadius) + 'px';
+          base.style.top = (t.clientY - this.joyRadius) + 'px';
+          base.style.opacity = '1';
+          updateKnob(0, 0);
+        } 
+        // Setengah kanan layar = Geser Kamera
+        else if (t.clientX >= window.innerWidth / 2 && this.lookTouchId === null) {
+          this.lookTouchId = t.identifier;
+          this.lastLook.x = t.clientX;
+          this.lastLook.y = t.clientY;
+        }
+      }
+    }, { passive: true });
+
+    document.addEventListener('touchmove', (e) => {
+      if (this.modal !== null) return;
+
       for (const t of e.changedTouches) {
         if (t.identifier === this.joyTouchId) {
           updateKnob(t.clientX - this.joyCenter.x, t.clientY - this.joyCenter.y);
-          e.preventDefault();
-          break;
-        }
-      }
-    }, { passive: false });
-
-    const endJoy = () => {
-      if (this.joyTouchId === null) return;
-      this.joyTouchId = null;
-      this.joyValue.x = 0;
-      this.joyValue.y = 0;
-      base.style.opacity = '0';
-      knob.style.transform = 'translate(-50%, -50%)';
-    };
-    zone.addEventListener('touchend', endJoy);
-    zone.addEventListener('touchcancel', endJoy);
-  }
-
-  setupLookZone() {
-    const lookZone = this.hudEl.querySelector('#look-zone');
-
-    lookZone.addEventListener('touchstart', (e) => {
-      if (this.modal !== null) return;
-      if (this.lookTouchId !== null) return;
-      if (e.target !== lookZone) return;
-      const t = e.changedTouches[0];
-      this.lookTouchId = t.identifier;
-      this.lastLook.x = t.clientX;
-      this.lastLook.y = t.clientY;
-    }, { passive: true });
-
-    lookZone.addEventListener('touchmove', (e) => {
-      if (this.modal !== null || this.lookTouchId === null) return;
-      for (const t of e.changedTouches) {
-        if (t.identifier === this.lookTouchId) {
+        } else if (t.identifier === this.lookTouchId) {
           const dx = t.clientX - this.lastLook.x;
           const dy = t.clientY - this.lastLook.y;
           this.lastLook.x = t.clientX;
           this.lastLook.y = t.clientY;
           this.controls.lookDelta(dx, dy);
-          e.preventDefault();
-          break;
         }
       }
-    }, { passive: false });
+    }, { passive: true });
 
-    const endLook = () => {
-      if (this.lookTouchId === null) return;
-      this.lookTouchId = null;
+    const endTouch = (e) => {
+      for (const t of e.changedTouches) {
+        if (t.identifier === this.joyTouchId) {
+          this.joyTouchId = null;
+          this.joyValue.x = 0;
+          this.joyValue.y = 0;
+          base.style.opacity = '0';
+          knob.style.transform = 'translate(-50%, -50%)';
+        } else if (t.identifier === this.lookTouchId) {
+          this.lookTouchId = null;
+        }
+      }
     };
-    lookZone.addEventListener('touchend', endLook);
-    lookZone.addEventListener('touchcancel', endLook);
+
+    document.addEventListener('touchend', endTouch, { passive: true });
+    document.addEventListener('touchcancel', endTouch, { passive: true });
   }
 
   openModal(kind) {
@@ -279,6 +255,8 @@ export class Game {
     this.lookTouchId = null;
     this.joyValue.x = 0;
     this.joyValue.y = 0;
+    const base = this.hudEl?.querySelector('#joystick-base');
+    if (base) base.style.opacity = '0';
     return true;
   }
 
@@ -295,7 +273,7 @@ export class Game {
     if (!this.openModal('pause')) return;
     this.pauseEl = document.createElement('div');
     this.pauseEl.id = 'pause-menu';
-    this.pauseEl.style.cssText = `position: absolute; inset: 0; background: rgba(5,5,15,0.78); display: flex; align-items: center; justify-content: center; z-index: 400; pointer-events: auto; padding: 24px;`;
+    this.pauseEl.style.cssText = `position: fixed; inset: 0; background: rgba(5,5,15,0.78); display: flex; align-items: center; justify-content: center; z-index: 9999; pointer-events: auto; padding: 24px;`;
     this.pauseEl.innerHTML = `
       <div style="width: 100%; max-width: 320px; background: rgba(20,20,40,0.98); border: 1px solid #2a2a40; border-radius: 16px; padding: 24px; display: flex; flex-direction: column; gap: 12px;">
         <h2 style="font-size: 18px; font-weight: 700; letter-spacing: 3px; text-align: center; margin-bottom: 8px; color: #6ee7b7;">PAUSED</h2>
