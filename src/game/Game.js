@@ -3,6 +3,8 @@ import { World } from './World.js';
 import { Controls } from './Controls.js';
 import { Collision } from './Collision.js';
 import { PlayerSync } from '../multiplayer/PlayerSync.js';
+import { Inventory } from './Inventory.js';
+import { InventoryUI } from '../ui/InventoryUI.js';
 
 export class Game {
   constructor(container) {
@@ -14,6 +16,8 @@ export class Game {
     this.controls = null;
     this.collision = new Collision();
     this.playerSync = null;
+    this.inventory = null;
+    this.inventoryUI = null;
     this.running = false;
     this.paused = false;
     this.clock = new THREE.Clock();
@@ -21,26 +25,21 @@ export class Game {
     this.pauseEl = null;
     this.joyValue = { x: 0, y: 0 };
     this.isFullscreen = false;
+    this.unsubs = [];
   }
 
   async start(onProgress) {
-    // ---- Scene ----
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(0x9dc8e8);
     this.scene.fog = new THREE.Fog(0x9dc8e8, 40, 95);
 
-    // ---- Camera ----
     this.camera = new THREE.PerspectiveCamera(
       72, window.innerWidth / window.innerHeight, 0.1, 200
     );
     this.camera.position.set(0, 1.6, 0);
     this.camera.rotation.order = 'YXZ';
 
-    // ---- Renderer (RINGAN) ----
-    this.renderer = new THREE.WebGLRenderer({
-      antialias: false,
-      powerPreference: 'high-performance'
-    });
+    this.renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance' });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.25));
     this.renderer.setSize(window.innerWidth, window.innerHeight);
     this.renderer.shadowMap.enabled = true;
@@ -49,34 +48,38 @@ export class Game {
     this.renderer.toneMapping = THREE.NoToneMapping;
     this.container.appendChild(this.renderer.domElement);
 
-    if (onProgress) onProgress(0.15, 'Menyiapkan renderer');
+    if (onProgress) onProgress(0.1, 'Menyiapkan renderer');
     await new Promise(r => setTimeout(r, 0));
 
-    // ---- World ----
     this.world = new World(this.scene, this.collision);
     await this.world.build((p, label) => {
-      if (onProgress) onProgress(0.15 + p * 0.7, label);
+      if (onProgress) onProgress(0.1 + p * 0.7, label);
     });
 
-    // ---- Controls ----
     this.controls = new Controls(this.camera, this.renderer.domElement, this.collision);
     this.controls.enable();
     this.controls.setJoystick(this.joyValue);
 
+    // Inventory
+    this.inventory = new Inventory();
+    this.inventory.add('water', 3);
+    this.inventory.add('bread', 2);
+    this.inventory.add('medkit', 1);
+
     if (onProgress) onProgress(0.9, 'Menyiapkan kontrol');
     await new Promise(r => setTimeout(r, 0));
 
-    // ---- HUD ----
     this.createHUD();
 
-    // ---- Multiplayer character sync ----
     if (window.__rooms && window.__rooms.currentRoom) {
       this.playerSync = new PlayerSync(this.scene, this.camera, window.__rooms);
-    } else {
-      this.playerSync = null;
+
+      // Notifikasi join
+      this.unsubs.push(window.__rooms.on('player_joined', (data) => {
+        this.showToast(`${data.name} telah join ke server`);
+      }));
     }
 
-    // ---- Resize ----
     this.onResize = () => this.handleResize();
     window.addEventListener('resize', this.onResize);
 
@@ -86,12 +89,9 @@ export class Game {
     };
     document.addEventListener('fullscreenchange', this.onFsChange);
 
-    // ---- Render frame pertama ----
     this.renderer.render(this.scene, this.camera);
-
     if (onProgress) onProgress(1, 'Selesai');
 
-    // ---- Loop ----
     this.running = true;
     this.animate();
   }
@@ -105,7 +105,9 @@ export class Game {
       <div id="joystick-zone"></div>
       <div id="joystick-base"><div id="joystick-knob"></div></div>
       <div id="look-zone"></div>
+      <div id="toast-container"></div>
       <div id="hud-buttons">
+        <button id="btn-inventory" title="Inventory">🎒</button>
         <button id="btn-fullscreen" title="Fullscreen">⛶</button>
         <button id="btn-settings" title="Settings">⚙</button>
       </div>
@@ -189,6 +191,11 @@ export class Game {
     lookZone.addEventListener('touchend', endLook);
     lookZone.addEventListener('touchcancel', endLook);
 
+    this.hudEl.querySelector('#btn-inventory').addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.openInventory();
+    });
+
     this.hudEl.querySelector('#btn-fullscreen').addEventListener('click', (e) => {
       e.stopPropagation();
       this.toggleFullscreen();
@@ -198,6 +205,35 @@ export class Game {
       e.stopPropagation();
       this.openPauseMenu();
     });
+  }
+
+  openInventory() {
+    if (this.inventoryUI) return;
+    this.paused = true;
+    this.inventoryUI = new InventoryUI(this.container, this.inventory, (itemId) => {
+      const item = this.inventory.use(itemId);
+      if (item) {
+        this.showToast(`Menggunakan ${item.name}`);
+        // Efek ke survival stats akan masuk Tahap 4
+      }
+      this.inventoryUI.hide();
+      this.inventoryUI = null;
+      this.paused = false;
+    });
+    this.inventoryUI.show();
+  }
+
+  showToast(text) {
+    const container = this.hudEl?.querySelector('#toast-container');
+    if (!container) return;
+    const toast = document.createElement('div');
+    toast.className = 'toast';
+    toast.textContent = text;
+    container.appendChild(toast);
+    setTimeout(() => {
+      toast.classList.add('fade-out');
+      setTimeout(() => toast.remove(), 400);
+    }, 3000);
   }
 
   async toggleFullscreen() {
@@ -213,9 +249,7 @@ export class Game {
         }
         await document.exitFullscreen();
       }
-    } catch (err) {
-      console.warn('Fullscreen failed:', err.message);
-    }
+    } catch (err) { console.warn('Fullscreen failed:', err.message); }
   }
 
   updateFullscreenBtn() {
@@ -252,10 +286,7 @@ export class Game {
   }
 
   closePauseMenu() {
-    if (this.pauseEl) {
-      this.pauseEl.remove();
-      this.pauseEl = null;
-    }
+    if (this.pauseEl) { this.pauseEl.remove(); this.pauseEl = null; }
     this.paused = false;
   }
 
@@ -276,8 +307,7 @@ export class Game {
       <button class="pause-btn danger" data-action="exit">EXIT TO HOME</button>
     `;
     panel.querySelector('#set-sens').addEventListener('input', (e) => {
-      const v = parseFloat(e.target.value);
-      this.controls.lookSensitivity = 0.0028 * v;
+      this.controls.lookSensitivity = 0.0028 * parseFloat(e.target.value);
     });
     panel.querySelector('#set-speed').addEventListener('input', (e) => {
       this.controls.speed = parseFloat(e.target.value);
@@ -318,6 +348,7 @@ export class Game {
     if (!this.paused) {
       this.controls.update(dt);
       if (this.playerSync) this.playerSync.update(dt);
+      if (this.world) this.world.updateAnimals(dt);
     }
 
     this.renderer.render(this.scene, this.camera);
@@ -325,8 +356,12 @@ export class Game {
 
   destroy() {
     this.running = false;
+    for (const u of this.unsubs) u();
+    this.unsubs.length = 0;
     window.removeEventListener('resize', this.onResize);
     document.removeEventListener('fullscreenchange', this.onFsChange);
+    this.inventoryUI?.hide();
+    this.inventoryUI = null;
     this.playerSync?.destroy();
     this.playerSync = null;
     this.controls?.disable();
