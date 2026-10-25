@@ -50,13 +50,18 @@ export class Game {
     this.camera.position.set(0, 1.6, 0);
     this.camera.rotation.order = 'YXZ';
 
-    this.renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance' });
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.25));
+    this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
     this.renderer.setSize(window.innerWidth, window.innerHeight);
+    
+    // --- SMOOTH LIGHTING FIX ---
     this.renderer.shadowMap.enabled = true;
-    this.renderer.shadowMap.type = THREE.BasicShadowMap;
+    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap; // Bayangan lebih halus
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
-    this.renderer.toneMapping = THREE.NoToneMapping;
+    this.renderer.toneMapping = THREE.ACESFilmicToneMapping; // Warna lebih natural & hidup
+    this.renderer.toneMappingExposure = 1.0;
+    // ---------------------------
+
     this.container.appendChild(this.renderer.domElement);
 
     if (onProgress) onProgress(0.1, 'Menyiapkan renderer');
@@ -123,14 +128,21 @@ export class Game {
     this.hudEl.innerHTML = `
       <div id="crosshair" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 6px; height: 6px; border-radius: 50%; background: rgba(255,255,255,0.75); box-shadow: 0 0 6px rgba(0,0,0,0.6);"></div>
       
-      <!-- Joystick Base dipindah ke HTML -->
-      <div id="joystick-base" style="position: absolute; width: 100px; height: 100px; border-radius: 50%; background: rgba(255,255,255,0.15); border: 2px solid rgba(255,255,255,0.3); opacity: 0; transition: opacity 0.1s; pointer-events: none; z-index: 60;">
-        <div id="joystick-knob" style="position: absolute; width: 44px; height: 44px; border-radius: 50%; background: rgba(255,255,255,0.5); top: 50%; left: 50%; transform: translate(-50%, -50%); pointer-events: none;"></div>
-      </div>
-      
       <div id="toast-container" style="position: absolute; top: 72px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; gap: 8px; pointer-events: none; z-index: 80; width: 90%; max-width: 360px;"></div>
     `;
     this.container.appendChild(this.hudEl);
+
+    // BASE JOYSTICK DIBUAT DI SINI AGAR PASTI KELIHATAN
+    this.joyBaseEl = document.createElement('div');
+    this.joyBaseEl.id = 'joystick-base';
+    this.joyBaseEl.style.cssText = `
+      position: fixed; width: 100px; height: 100px; border-radius: 50%; 
+      background: rgba(255,255,255,0.15); border: 2px solid rgba(255,255,255,0.4); 
+      display: none; pointer-events: none; z-index: 9998;
+      box-shadow: 0 0 10px rgba(0,0,0,0.5); transform: translate(-50%, -50%);
+    `;
+    this.joyBaseEl.innerHTML = `<div id="joystick-knob" style="position: absolute; width: 44px; height: 44px; border-radius: 50%; background: rgba(255,255,255,0.6); top: 50%; left: 50%; transform: translate(-50%, -50%); pointer-events: none;"></div>`;
+    this.container.appendChild(this.joyBaseEl);
 
     this.buttonsEl = document.createElement('div');
     this.buttonsEl.id = 'hud-buttons';
@@ -153,8 +165,8 @@ export class Game {
   }
 
   setupTouchControls() {
-    const base = this.hudEl.querySelector('#joystick-base');
-    const knob = this.hudEl.querySelector('#joystick-knob');
+    const base = this.joyBaseEl;
+    const knob = this.joyBaseEl.querySelector('#joystick-knob');
 
     const updateKnob = (dx, dy) => {
       const dist = Math.hypot(dx, dy);
@@ -175,9 +187,11 @@ export class Game {
           this.joyTouchId = t.identifier;
           this.joyCenter.x = t.clientX;
           this.joyCenter.y = t.clientY;
-          base.style.left = (t.clientX - this.joyRadius) + 'px';
-          base.style.top = (t.clientY - this.joyRadius) + 'px';
-          base.style.opacity = '1';
+          
+          // Update posisi joystick
+          base.style.left = t.clientX + 'px';
+          base.style.top = t.clientY + 'px';
+          base.style.display = 'block';
           updateKnob(0, 0);
         } 
         else if (t.clientX >= window.innerWidth / 2 && this.lookTouchId === null) {
@@ -210,7 +224,7 @@ export class Game {
           this.joyTouchId = null;
           this.joyValue.x = 0;
           this.joyValue.y = 0;
-          base.style.opacity = '0';
+          base.style.display = 'none';
           knob.style.transform = 'translate(-50%, -50%)';
         } else if (t.identifier === this.lookTouchId) {
           this.lookTouchId = null;
@@ -247,8 +261,7 @@ export class Game {
     this.lookTouchId = null;
     this.joyValue.x = 0;
     this.joyValue.y = 0;
-    const base = this.hudEl?.querySelector('#joystick-base');
-    if (base) base.style.opacity = '0';
+    if (this.joyBaseEl) this.joyBaseEl.style.display = 'none';
     return true;
   }
 
@@ -333,7 +346,6 @@ export class Game {
     try {
       if (!document.fullscreenElement) {
         await document.documentElement.requestFullscreen({ navigationUI: 'hide' });
-        // Coba kunci landscape dengan try-catch agar tidak crash
         if (screen.orientation && screen.orientation.lock) {
           screen.orientation.lock('landscape').catch(() => {});
         }
@@ -386,6 +398,7 @@ export class Game {
     if (this.renderer?.domElement?.parentNode) { this.renderer.domElement.parentNode.removeChild(this.renderer.domElement); }
     if (this.hudEl?.parentNode) this.hudEl.parentNode.removeChild(this.hudEl);
     if (this.buttonsEl?.parentNode) this.buttonsEl.parentNode.removeChild(this.buttonsEl);
+    if (this.joyBaseEl?.parentNode) this.joyBaseEl.parentNode.removeChild(this.joyBaseEl);
     this.container.innerHTML = '';
   }
 }
