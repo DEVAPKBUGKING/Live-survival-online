@@ -27,10 +27,12 @@ export class Game {
     this.isFullscreen = false;
     this.unsubs = [];
 
-    // Touch state — bisa direset saat pause untuk cegah leak
-    this.joyActive = false;
+    // Per-zone touch identifier tracking
+    this.joyTouchId = null;
     this.lookTouchId = null;
+    this.joyCenter = { x: 0, y: 0 };
     this.lastLook = { x: 0, y: 0 };
+    this.joyRadius = 50;
 
     this.knownPlayers = new Set();
   }
@@ -119,6 +121,7 @@ export class Game {
   }
 
   createHUD() {
+    // ---- Game HUD (joystick + look + toast) ----
     this.hudEl = document.createElement('div');
     this.hudEl.id = 'game-hud';
     this.hudEl.classList.add('active');
@@ -128,80 +131,109 @@ export class Game {
       <div id="joystick-base"><div id="joystick-knob"></div></div>
       <div id="look-zone"></div>
       <div id="toast-container"></div>
-      <div id="hud-buttons">
-        <button id="btn-inventory" title="Inventory">🎒</button>
-        <button id="btn-fullscreen" title="Fullscreen">⛶</button>
-        <button id="btn-settings" title="Settings">⚙</button>
-      </div>
     `;
     this.container.appendChild(this.hudEl);
 
+    // ---- HUD buttons (sibling, di luar game-hud) ----
+    this.buttonsEl = document.createElement('div');
+    this.buttonsEl.id = 'hud-buttons';
+    this.buttonsEl.innerHTML = `
+      <button id="btn-inventory" title="Inventory">🎒</button>
+      <button id="btn-fullscreen" title="Fullscreen">⛶</button>
+      <button id="btn-settings" title="Settings">⚙</button>
+    `;
+    this.container.appendChild(this.buttonsEl);
+
+    this.setupJoystick();
+    this.setupLookZone();
+
+    this.buttonsEl.querySelector('#btn-inventory').addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.openInventory();
+    });
+    this.buttonsEl.querySelector('#btn-fullscreen').addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.toggleFullscreen();
+    });
+    this.buttonsEl.querySelector('#btn-settings').addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.openPauseMenu();
+    });
+  }
+
+  setupJoystick() {
     const zone = this.hudEl.querySelector('#joystick-zone');
     const base = this.hudEl.querySelector('#joystick-base');
     const knob = this.hudEl.querySelector('#joystick-knob');
 
-    let joyCenter = { x: 0, y: 0 };
-    const joyRadius = 50;
-
     const updateKnob = (dx, dy) => {
       const dist = Math.hypot(dx, dy);
-      const clamped = Math.min(dist, joyRadius);
+      const clamped = Math.min(dist, this.joyRadius);
       const angle = Math.atan2(dy, dx);
       const kx = Math.cos(angle) * clamped;
       const ky = Math.sin(angle) * clamped;
       knob.style.transform = `translate(calc(-50% + ${kx}px), calc(-50% + ${ky}px))`;
-      this.joyValue.x = kx / joyRadius;
-      this.joyValue.y = ky / joyRadius;
+      this.joyValue.x = kx / this.joyRadius;
+      this.joyValue.y = ky / this.joyRadius;
     };
 
     zone.addEventListener('touchstart', (e) => {
       if (this.paused) return;
-      // Cegah bocor: target harus di dalam zone
-      if (!zone.contains(e.target) && e.target !== zone) return;
-      e.preventDefault();
+      if (this.joyTouchId !== null) return;
       const t = e.changedTouches[0];
-      this.joyActive = true;
-      joyCenter.x = t.clientX;
-      joyCenter.y = t.clientY;
+      this.joyTouchId = t.identifier;
+      this.joyCenter.x = t.clientX;
+      this.joyCenter.y = t.clientY;
       base.style.position = 'fixed';
-      base.style.left = (t.clientX - 50) + 'px';
-      base.style.top = (t.clientY - 50) + 'px';
+      base.style.left = (t.clientX - this.joyRadius) + 'px';
+      base.style.top = (t.clientY - this.joyRadius) + 'px';
       base.classList.add('active');
       updateKnob(0, 0);
+      e.preventDefault();
     }, { passive: false });
 
     zone.addEventListener('touchmove', (e) => {
-      if (this.paused || !this.joyActive) return;
-      e.preventDefault();
-      const t = e.changedTouches[0];
-      updateKnob(t.clientX - joyCenter.x, t.clientY - joyCenter.y);
+      if (this.paused || this.joyTouchId === null) return;
+      for (const t of e.changedTouches) {
+        if (t.identifier === this.joyTouchId) {
+          updateKnob(t.clientX - this.joyCenter.x, t.clientY - this.joyCenter.y);
+          e.preventDefault();
+          break;
+        }
+      }
     }, { passive: false });
 
     const endJoy = (e) => {
-      if (!this.joyActive) return;
-      e.preventDefault();
-      this.joyActive = false;
-      base.classList.remove('active');
-      knob.style.transform = 'translate(-50%, -50%)';
-      this.joyValue.x = 0;
-      this.joyValue.y = 0;
+      if (this.joyTouchId === null) return;
+      for (const t of e.changedTouches) {
+        if (t.identifier === this.joyTouchId) {
+          this.joyTouchId = null;
+          this.joyValue.x = 0;
+          this.joyValue.y = 0;
+          base.classList.remove('active');
+          knob.style.transform = 'translate(-50%, -50%)';
+          break;
+        }
+      }
     };
     zone.addEventListener('touchend', endJoy);
     zone.addEventListener('touchcancel', endJoy);
+  }
 
+  setupLookZone() {
     const lookZone = this.hudEl.querySelector('#look-zone');
 
     lookZone.addEventListener('touchstart', (e) => {
       if (this.paused) return;
-      // Cegah bocor dari tombol HUD ke look zone
-      if (e.target !== lookZone) return;
       if (this.lookTouchId !== null) return;
+      // Hanya terima touch yang target-nya lookZone atau child-nya (bukan tombol HUD)
+      if (e.target !== lookZone) return;
       const t = e.changedTouches[0];
       this.lookTouchId = t.identifier;
       this.lastLook.x = t.clientX;
       this.lastLook.y = t.clientY;
-      e.preventDefault();
-    }, { passive: false });
+      // TIDAK preventDefault di sini — biarkan click pada tombol lain lewat
+    }, { passive: true });
 
     lookZone.addEventListener('touchmove', (e) => {
       if (this.paused || this.lookTouchId === null) return;
@@ -213,6 +245,7 @@ export class Game {
           this.lastLook.y = t.clientY;
           this.controls.lookDelta(dx, dy);
           e.preventDefault();
+          break;
         }
       }
     }, { passive: false });
@@ -228,24 +261,11 @@ export class Game {
     };
     lookZone.addEventListener('touchend', endLook);
     lookZone.addEventListener('touchcancel', endLook);
-
-    this.hudEl.querySelector('#btn-inventory').addEventListener('click', (e) => {
-      e.stopPropagation();
-      this.openInventory();
-    });
-    this.hudEl.querySelector('#btn-fullscreen').addEventListener('click', (e) => {
-      e.stopPropagation();
-      this.toggleFullscreen();
-    });
-    this.hudEl.querySelector('#btn-settings').addEventListener('click', (e) => {
-      e.stopPropagation();
-      this.openPauseMenu();
-    });
   }
 
-  // Reset semua state touch — dipanggil saat pause/unpause
+  // Reset semua touch state — dipanggil saat pause/unpause
   resetTouchState() {
-    this.joyActive = false;
+    this.joyTouchId = null;
     this.lookTouchId = null;
     this.joyValue.x = 0;
     this.joyValue.y = 0;
@@ -253,16 +273,11 @@ export class Game {
     const knob = this.hudEl?.querySelector('#joystick-knob');
     if (base) base.classList.remove('active');
     if (knob) knob.style.transform = 'translate(-50%, -50%)';
-    this.controls?.setJoystick(this.joyValue);
   }
 
   setPaused(p) {
     this.paused = p;
     this.resetTouchState();
-    const jz = this.hudEl?.querySelector('#joystick-zone');
-    const lz = this.hudEl?.querySelector('#look-zone');
-    if (jz) jz.style.pointerEvents = p ? 'none' : 'auto';
-    if (lz) lz.style.pointerEvents = p ? 'none' : 'auto';
   }
 
   openInventory() {
@@ -282,13 +297,7 @@ export class Game {
       this.inventoryUI.hide();
       this.inventoryUI = null;
     }
-    // Pastikan benar-benar unpause dan reset touch
     this.setPaused(false);
-    // force re-enable joystick
-    const jz = this.hudEl?.querySelector('#joystick-zone');
-    const lz = this.hudEl?.querySelector('#look-zone');
-    if (jz) jz.style.pointerEvents = 'auto';
-    if (lz) lz.style.pointerEvents = 'auto';
   }
 
   showToast(text) {
@@ -321,7 +330,7 @@ export class Game {
   }
 
   updateFullscreenBtn() {
-    const btn = this.hudEl?.querySelector('#btn-fullscreen');
+    const btn = this.buttonsEl?.querySelector('#btn-fullscreen');
     if (btn) btn.classList.toggle('fs-on', this.isFullscreen);
   }
 
@@ -352,10 +361,6 @@ export class Game {
   closePauseMenu() {
     if (this.pauseEl) { this.pauseEl.remove(); this.pauseEl = null; }
     this.setPaused(false);
-    const jz = this.hudEl?.querySelector('#joystick-zone');
-    const lz = this.hudEl?.querySelector('#look-zone');
-    if (jz) jz.style.pointerEvents = 'auto';
-    if (lz) lz.style.pointerEvents = 'auto';
   }
 
   openSettings() {
@@ -381,7 +386,6 @@ export class Game {
       this.controls.speed = parseFloat(e.target.value);
     });
     panel.querySelector('[data-action="back"]').addEventListener('click', () => {
-      // Kembali ke pause menu TANPA unpause dulu
       this.pauseEl.remove();
       this.pauseEl = null;
       this.openPauseMenu();
@@ -430,7 +434,7 @@ export class Game {
     this.unsubs.length = 0;
     window.removeEventListener('resize', this.onResize);
     document.removeEventListener('fullscreenchange', this.onFsChange);
-    this.closeInventory();
+    if (this.inventoryUI) { this.inventoryUI.hide(); this.inventoryUI = null; }
     this.playerSync?.destroy();
     this.playerSync = null;
     this.controls?.disable();
@@ -439,6 +443,7 @@ export class Game {
       this.renderer.domElement.parentNode.removeChild(this.renderer.domElement);
     }
     if (this.hudEl?.parentNode) this.hudEl.parentNode.removeChild(this.hudEl);
+    if (this.buttonsEl?.parentNode) this.buttonsEl.parentNode.removeChild(this.buttonsEl);
     if (this.pauseEl?.parentNode) this.pauseEl.parentNode.removeChild(this.pauseEl);
     this.container.innerHTML = '';
   }
