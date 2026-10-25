@@ -3,7 +3,6 @@ import { Game } from './game/Game.js';
 import { MainMenu } from './ui/MainMenu.js';
 import { CreateRoom } from './ui/CreateRoom.js';
 import { JoinRoom } from './ui/JoinRoom.js';
-import { Lobby } from './ui/Lobby.js';
 import { HistoryRooms } from './ui/HistoryRooms.js';
 import { Rooms } from './multiplayer/Rooms.js';
 
@@ -27,7 +26,7 @@ function showHistory() {
       try {
         await rooms.joinRoom({ code, name });
         history.hide();
-        showLobby();
+        await enterWorld();
       } catch (e) {
         alert(e.message);
         menu.show();
@@ -44,7 +43,7 @@ function showCreateRoom() {
     async ({ name, roomName, maxPlayers }) => {
       await rooms.createRoom({ name, roomName, maxPlayers });
       screen.hide();
-      showLobby();
+      await enterWorld();
     },
     () => menu.show()
   );
@@ -57,25 +56,15 @@ function showJoinRoom() {
     async ({ code, name }) => {
       await rooms.joinRoom({ code, name });
       screen.hide();
-      showLobby();
+      await enterWorld();
     },
     () => menu.show()
   );
   screen.show();
 }
 
-function showLobby() {
-  const lobby = new Lobby(app, rooms, {
-    onStart: async (payload) => {
-      lobby.hide();
-      await startGame(payload);
-    },
-    onLeave: () => menu.show()
-  });
-  lobby.show();
-}
-
-async function startGame(payload) {
+// Langsung masuk dunia, tidak ada lobby, tidak ada START
+async function enterWorld() {
   showLoading();
   await new Promise(r => setTimeout(r, 30));
 
@@ -85,7 +74,7 @@ async function startGame(payload) {
 
   try {
     await currentGame.start((p, label) => updateLoading(p, label));
-    await new Promise(r => setTimeout(r, 250));
+    await new Promise(r => setTimeout(r, 200));
     hideLoading();
   } catch (err) {
     console.error(err);
