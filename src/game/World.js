@@ -4,41 +4,36 @@ export class World {
   constructor(scene, collision) {
     this.scene = scene;
     this.collision = collision;
+    this.animals = [];
   }
 
-  // Dipanggil dengan progress callback supaya loading screen nyata
   async build(onProgress) {
-    const steps = 5;
+    const steps = 6;
     let done = 0;
     const tick = async (label) => {
       done++;
       if (onProgress) onProgress(done / steps, label);
-      // yield ke event loop supaya UI loading sempat render
       await new Promise(r => setTimeout(r, 0));
     };
 
     this.buildLighting();
     await tick('Menyiapkan cahaya');
-
     this.buildGround();
     await tick('Membangun jalan');
-
     this.buildHouse();
     await tick('Membangun rumah');
-
-    this.buildOutside();
+    this.buildTrees();
     await tick('Menanam pohon');
-
-    this.buildBoundary();
-    await tick('Menyelesaikan dunia');
+    this.buildNature();
+    await tick('Menambah rumput & batu');
+    this.buildAnimals();
+    await tick('Menghidupkan dunia');
   }
 
   buildLighting() {
-    // Hemisphere ringan: satu draw call, tanpa shadow
     const hemi = new THREE.HemisphereLight(0xaaccff, 0x4a7c3f, 1.0);
     this.scene.add(hemi);
 
-    // Sun directional — shadow 512 + BasicShadowMap (termurah)
     const sun = new THREE.DirectionalLight(0xfff2d5, 1.1);
     sun.position.set(30, 50, 20);
     sun.castShadow = true;
@@ -52,7 +47,6 @@ export class World {
     sun.shadow.bias = -0.001;
     this.scene.add(sun);
 
-    // Fill tipis
     const fill = new THREE.DirectionalLight(0x88aaff, 0.25);
     fill.position.set(-20, 10, -10);
     this.scene.add(fill);
@@ -65,7 +59,6 @@ export class World {
     ground.receiveShadow = true;
     this.scene.add(ground);
 
-    // Road — koridor utama yang dilalui pemain
     const roadMat = new THREE.MeshLambertMaterial({ color: 0x3a3a3a });
     const road = new THREE.Mesh(new THREE.PlaneGeometry(6, 40), roadMat);
     road.rotation.x = -Math.PI / 2;
@@ -73,7 +66,6 @@ export class World {
     road.receiveShadow = true;
     this.scene.add(road);
 
-    // Strip kuning tengah
     const stripeMat = new THREE.MeshLambertMaterial({ color: 0xd4b040 });
     for (let i = 0; i < 6; i++) {
       const stripe = new THREE.Mesh(new THREE.PlaneGeometry(0.3, 2), stripeMat);
@@ -82,13 +74,11 @@ export class World {
       this.scene.add(stripe);
     }
 
-    // Trotoar di sisi road
     const sideMat = new THREE.MeshLambertMaterial({ color: 0x9a9a9a });
     const sidewalkL = new THREE.Mesh(new THREE.PlaneGeometry(1.2, 40), sideMat);
     sidewalkL.rotation.x = -Math.PI / 2;
     sidewalkL.position.set(-3.6, 0.02, -18);
     this.scene.add(sidewalkL);
-
     const sidewalkR = sidewalkL.clone();
     sidewalkR.position.x = 3.6;
     this.scene.add(sidewalkR);
@@ -106,16 +96,13 @@ export class World {
     const wallHeight = 2.8;
     const wallThick = 0.2;
 
-    // Dinding — didaftarkan sebagai collider AABB
     this.addWall(0, wallHeight / 2, -5, 10, wallHeight, wallThick, wallMat);
     this.addWall(-5, wallHeight / 2, 0, wallThick, wallHeight, 10, wallMat);
     this.addWall(5, wallHeight / 2, 0, wallThick, wallHeight, 10, wallMat);
 
-    // Front wall dengan pintu gap 1.2m di tengah
     const segWidth = 4.4;
     this.addWall(-(0.6 + segWidth / 2), wallHeight / 2, 5, segWidth, wallHeight, wallThick, wallMat);
     this.addWall(0.6 + segWidth / 2, wallHeight / 2, 5, segWidth, wallHeight, wallThick, wallMat);
-    // Header atas pintu — tidak solid, tapi tetap didaftarkan supaya tidak tembus dari atas
     const header = this.addBox(0, wallHeight - 0.3, 5, 1.2, 0.6, wallThick, wallMat);
     header.castShadow = true;
 
@@ -125,7 +112,6 @@ export class World {
     roof.castShadow = true;
     this.scene.add(roof);
 
-    // Bed — collider
     const bedFrame = new THREE.MeshLambertMaterial({ color: 0x6b3e2b });
     const bed = this.addBox(-3.5, 0.25, -3.5, 1.2, 0.5, 2, bedFrame);
     bed.castShadow = true;
@@ -135,7 +121,6 @@ export class World {
     const sheet = this.addBox(-3.5, 0.55, -3.5, 1.1, 0.1, 1.9, bedSheet);
     sheet.castShadow = true;
 
-    // Table — collider
     const tableMat = new THREE.MeshLambertMaterial({ color: 0x5a3e2b });
     const table = this.addBox(3, 0.4, -3, 1.5, 0.08, 0.8, tableMat);
     table.castShadow = true;
@@ -144,45 +129,152 @@ export class World {
     }
     this.collision.addBox(2.25, 0, -3.4, 3.75, 0.5, -2.6);
 
-    // Fridge — collider
     const fridgeMat = new THREE.MeshLambertMaterial({ color: 0xd8d8dc });
     const fridge = this.addBox(4, 0.9, 3, 0.7, 1.8, 0.7, fridgeMat);
     fridge.castShadow = true;
     this.collision.addBox(3.65, 0, 2.65, 4.35, 1.8, 3.35);
 
-    // Kitchen counter — collider
     const counterMat = new THREE.MeshLambertMaterial({ color: 0x8a8a8a });
     const counter = this.addBox(-4, 0.45, 3, 1.8, 0.9, 0.7, counterMat);
     counter.castShadow = true;
     this.collision.addBox(-4.9, 0, 2.65, -3.1, 0.9, 3.35);
   }
 
-  buildOutside() {
+  // Pohon lebih hidup: trunk + 3 lapis cone, random rotasi/scale
+  buildTrees() {
     const trunkMat = new THREE.MeshLambertMaterial({ color: 0x5a3e2b });
-    const leafMat = new THREE.MeshLambertMaterial({ color: 0x2d7a2d });
+    const leafMats = [
+      new THREE.MeshLambertMaterial({ color: 0x2d7a2d }),
+      new THREE.MeshLambertMaterial({ color: 0x3a8f3a }),
+      new THREE.MeshLambertMaterial({ color: 0x246b24 })
+    ];
 
-    const treePositions = [[-12, -8], [14, -4], [-16, 6], [18, 10], [-8, 14], [-20, -15], [22, -12]];
+    const treePositions = [
+      [-12, -8], [14, -4], [-16, 6], [18, 10], [-8, 14],
+      [-20, -15], [22, -12], [-14, 18], [26, 2], [10, -20]
+    ];
+
     for (const [x, z] of treePositions) {
-      const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.28, 2.2, 6), trunkMat);
-      trunk.position.set(x, 1.1, z);
+      const scale = 0.8 + Math.random() * 0.6;
+      const trunk = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.2 * scale, 0.28 * scale, 2.2 * scale, 7),
+        trunkMat
+      );
+      trunk.position.set(x, 1.1 * scale, z);
       trunk.castShadow = true;
       this.scene.add(trunk);
-      this.collision.addBox(x - 0.35, 0, z - 0.35, x + 0.35, 2.2, z + 0.35);
+      this.collision.addBox(x - 0.3, 0, z - 0.3, x + 0.3, 2.2 * scale, z + 0.3);
 
-      const leaves = new THREE.Mesh(new THREE.ConeGeometry(1.4, 2.8, 5), leafMat);
-      leaves.position.set(x, 3.5, z);
-      leaves.castShadow = true;
-      this.scene.add(leaves);
+      // 3 lapis cone untuk crown
+      const leafMat = leafMats[Math.floor(Math.random() * leafMats.length)];
+      const layers = 3;
+      for (let i = 0; i < layers; i++) {
+        const r = (1.5 - i * 0.35) * scale;
+        const h = (1.6 - i * 0.2) * scale;
+        const cone = new THREE.Mesh(new THREE.ConeGeometry(r, h, 7), leafMat);
+        cone.position.set(x, (2.6 + i * 0.9) * scale, z);
+        cone.rotation.y = Math.random() * Math.PI;
+        cone.castShadow = true;
+        this.scene.add(cone);
+      }
+    }
+  }
+
+  // Rumput (billboard plane) + batu (icosahedron)
+  buildNature() {
+    // Rumput — 80 patch kecil di sekitar ground
+    const grassMat = new THREE.MeshLambertMaterial({
+      color: 0x6aaa4a, side: THREE.DoubleSide
+    });
+    for (let i = 0; i < 80; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const dist = 8 + Math.random() * 28;
+      const x = Math.cos(angle) * dist;
+      const z = Math.sin(angle) * dist;
+
+      // Skip kalau di dalam rumah
+      if (Math.abs(x) < 5.5 && Math.abs(z) < 5.5) continue;
+
+      const blade = new THREE.Mesh(new THREE.PlaneGeometry(0.15, 0.4), grassMat);
+      blade.position.set(x, 0.2, z);
+      blade.rotation.y = Math.random() * Math.PI;
+      this.scene.add(blade);
     }
 
-    // Bench — collider
-    const benchMat = new THREE.MeshLambertMaterial({ color: 0x7a4a2b });
-    const b1 = this.addBox(-10, 0.25, 8, 2, 0.08, 0.5, benchMat);
-    const b2 = this.addBox(-10, 0.12, 8, 2, 0.25, 0.08, benchMat);
-    const b3 = this.addBox(-10.7, 0.2, 8, 0.08, 0.4, 0.5, benchMat);
-    const b4 = this.addBox(-9.3, 0.2, 8, 0.08, 0.4, 0.5, benchMat);
-    b1.castShadow = b2.castShadow = b3.castShadow = b4.castShadow = true;
-    this.collision.addBox(-11, 0, 7.7, -9, 0.5, 8.3);
+    // Batu — 15 batu kecil
+    const rockMat = new THREE.MeshLambertMaterial({ color: 0x7a7a7a, flatShading: true });
+    for (let i = 0; i < 15; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const dist = 10 + Math.random() * 25;
+      const x = Math.cos(angle) * dist;
+      const z = Math.sin(angle) * dist;
+
+      if (Math.abs(x) < 5.5 && Math.abs(z) < 5.5) continue;
+
+      const s = 0.2 + Math.random() * 0.3;
+      const rock = new THREE.Mesh(new THREE.IcosahedronGeometry(s, 0), rockMat);
+      rock.position.set(x, s * 0.5, z);
+      rock.rotation.set(Math.random(), Math.random(), Math.random());
+      rock.castShadow = true;
+      this.scene.add(rock);
+      this.collision.addBox(x - s, 0, z - s, x + s, s * 2, z + s);
+    }
+  }
+
+  // Hewan sederhana: kubus badan + kepala, bergerak pelan
+  buildAnimals() {
+    const bodyMat = new THREE.MeshLambertMaterial({ color: 0xc8a070 });
+    const headMat = new THREE.MeshLambertMaterial({ color: 0xe0c090 });
+
+    for (let i = 0; i < 4; i++) {
+      const group = new THREE.Group();
+
+      const body = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.35, 0.8), bodyMat);
+      body.position.y = 0.4;
+      body.castShadow = true;
+      group.add(body);
+
+      const head = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.3, 0.3), headMat);
+      head.position.set(0, 0.6, 0.5);
+      head.castShadow = true;
+      group.add(head);
+
+      const legMat = new THREE.MeshLambertMaterial({ color: 0x8a6a4a });
+      for (const [lx, lz] of [[-0.18, -0.25], [0.18, -0.25], [-0.18, 0.25], [0.18, 0.25]]) {
+        const leg = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.3, 0.1), legMat);
+        leg.position.set(lx, 0.15, lz);
+        group.add(leg);
+      }
+
+      const startX = (Math.random() - 0.5) * 30;
+      const startZ = (Math.random() - 0.5) * 30;
+      group.position.set(startX, 0, startZ);
+      this.scene.add(group);
+
+      this.animals.push({
+        group,
+        angle: Math.random() * Math.PI * 2,
+        speed: 0.5 + Math.random() * 0.5,
+        timer: 2 + Math.random() * 3
+      });
+    }
+  }
+
+  updateAnimals(dt) {
+    for (const a of this.animals) {
+      a.timer -= dt;
+      if (a.timer <= 0) {
+        a.angle += (Math.random() - 0.5) * 1.5;
+        a.timer = 2 + Math.random() * 3;
+      }
+      a.group.position.x += Math.cos(a.angle) * a.speed * dt;
+      a.group.position.z += Math.sin(a.angle) * a.speed * dt;
+      a.group.rotation.y = -a.angle + Math.PI / 2;
+
+      // Clamp
+      if (Math.abs(a.group.position.x) > 35) a.angle = Math.PI - a.angle;
+      if (Math.abs(a.group.position.z) > 35) a.angle = -a.angle;
+    }
   }
 
   buildBoundary() {
@@ -195,22 +287,17 @@ export class World {
     this.addBox(-38, h / 2, 0, 0.3, h, 78, boundMat);
     this.addBox(38, h / 2, 0, 0.3, h, 78, boundMat);
 
-    // Boundary juga collider (pemain tidak bisa keluar)
     this.collision.addBox(-39, 0, -39, 39, h, -37.7);
     this.collision.addBox(-39, 0, 37.7, 39, h, 39);
     this.collision.addBox(-39, 0, -39, -37.7, h, 39);
     this.collision.addBox(37.7, 0, -39, 39, h, 39);
   }
 
-  // Wall: solid + registered as collider
   addWall(x, y, z, w, h, d, material) {
     const mesh = this.addBox(x, y, z, w, h, d, material);
     mesh.castShadow = true;
     mesh.receiveShadow = true;
-    this.collision.addBox(
-      x - w / 2, 0, z - d / 2,
-      x + w / 2, h, z + d / 2
-    );
+    this.collision.addBox(x - w / 2, 0, z - d / 2, x + w / 2, h, z + d / 2);
     return mesh;
   }
 
