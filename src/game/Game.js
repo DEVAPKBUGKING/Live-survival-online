@@ -39,10 +39,6 @@ export class Game {
     this.knownPlayers = new Set();
   }
 
-  get paused() {
-    return this.modal !== null;
-  }
-
   async start(onProgress) {
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(0x9dc8e8);
@@ -70,6 +66,11 @@ export class Game {
     await this.world.build((p, label) => {
       if (onProgress) onProgress(0.1 + p * 0.7, label);
     });
+
+    // TAMBAHAN: Cahaya di dalam rumah biar ga gelap gulita
+    const roomLight = new THREE.PointLight(0xffffff, 1.5, 15);
+    roomLight.position.set(0, 2.5, 0);
+    this.scene.add(roomLight);
 
     this.controls = new Controls(this.camera, this.renderer.domElement, this.collision);
     this.controls.enable();
@@ -113,12 +114,6 @@ export class Game {
     this.onResize = () => this.handleResize();
     window.addEventListener('resize', this.onResize);
 
-    this.onFsChange = () => {
-      this.isFullscreen = !!document.fullscreenElement;
-      this.updateFullscreenBtn();
-    };
-    document.addEventListener('fullscreenchange', this.onFsChange);
-
     this.renderer.render(this.scene, this.camera);
     if (onProgress) onProgress(1, 'Selesai');
 
@@ -126,80 +121,32 @@ export class Game {
     this.animate();
   }
 
-  openModal(kind) {
-    if (this.modal === kind) return false;
-    if (this.modal !== null) this.closeModal();
-    this.modal = kind;
-    this.resetTouchState();
-    return true;
-  }
-
-  closeModal() {
-    if (this.modal === null) return false;
-    const kind = this.modal;
-    this.modal = null;
-
-    if (kind === 'inventory' && this.inventoryUI) {
-      const ui = this.inventoryUI;
-      this.inventoryUI = null;
-      ui.hide();
-    }
-    if (kind === 'pause' && this.pauseEl) {
-      const el = this.pauseEl;
-      this.pauseEl = null;
-      el.remove();
-    }
-    this.resetTouchState();
-    return true;
-  }
-
-  resetTouchState() {
-    this.joyTouchId = null;
-    this.lookTouchId = null;
-    this.joyValue.x = 0;
-    this.joyValue.y = 0;
-    const base = this.hudEl?.querySelector('#joystick-base');
-    const knob = this.hudEl?.querySelector('#joystick-knob');
-    if (base) base.classList.remove('active');
-    if (knob) knob.style.transform = 'translate(-50%, -50%)';
-  }
-
   createHUD() {
-    // Paksa style via JS biar ga ilang walaupun style.css kacau
+    // HUD Utama (Kamera & Joystick)
     this.hudEl = document.createElement('div');
     this.hudEl.id = 'game-hud';
-    this.hudEl.style.cssText = `
-      position: absolute; inset: 0; pointer-events: none; z-index: 50;
-    `;
+    this.hudEl.style.cssText = `position: absolute; inset: 0; pointer-events: none; z-index: 50;`;
     this.hudEl.innerHTML = `
       <div id="crosshair" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 6px; height: 6px; border-radius: 50%; background: rgba(255,255,255,0.75); box-shadow: 0 0 6px rgba(0,0,0,0.6);"></div>
       
-      <div id="joystick-zone" style="position: absolute; left: 0; bottom: 0; width: 45%; height: 40%; pointer-events: auto; touch-action: none;"></div>
-      <div id="joystick-base" style="position: absolute; width: 100px; height: 100px; border-radius: 50%; background: rgba(255,255,255,0.1); border: 2px solid rgba(255,255,255,0.2); opacity: 0; transition: opacity 0.1s; pointer-events: none;">
-        <div id="joystick-knob" style="position: absolute; width: 44px; height: 44px; border-radius: 50%; background: rgba(255,255,255,0.35); border: 2px solid rgba(255,255,255,0.5); top: 50%; left: 50%; transform: translate(-50%, -50%); pointer-events: none;"></div>
+      <div id="joystick-zone" style="position: absolute; left: 0; bottom: 0; width: 50%; height: 50%; pointer-events: auto; touch-action: none;"></div>
+      
+      <div id="joystick-base" style="position: absolute; width: 100px; height: 100px; border-radius: 50%; background: rgba(255,255,255,0.15); border: 2px solid rgba(255,255,255,0.3); opacity: 0; transition: opacity 0.1s; pointer-events: none;">
+        <div id="joystick-knob" style="position: absolute; width: 44px; height: 44px; border-radius: 50%; background: rgba(255,255,255,0.5); top: 50%; left: 50%; transform: translate(-50%, -50%); pointer-events: none;"></div>
       </div>
       
-      <div id="look-zone" style="position: absolute; right: 0; top: 25%; width: 55%; height: 50%; pointer-events: auto; touch-action: none;"></div>
+      <div id="look-zone" style="position: absolute; right: 0; top: 0; width: 50%; height: 100%; pointer-events: auto; touch-action: none;"></div>
+      
       <div id="toast-container" style="position: absolute; top: 72px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; gap: 8px; pointer-events: none; z-index: 80; width: 90%; max-width: 360px;"></div>
     `;
     this.container.appendChild(this.hudEl);
 
+    // Tombol HUD
     this.buttonsEl = document.createElement('div');
     this.buttonsEl.id = 'hud-buttons';
-    // Paksa posisi tombol melayang di kanan atas
-    this.buttonsEl.style.cssText = `
-      position: absolute; top: 12px; right: 12px;
-      display: flex; gap: 8px; pointer-events: auto; z-index: 300;
-    `;
+    this.buttonsEl.style.cssText = `position: absolute; top: 12px; right: 12px; display: flex; gap: 8px; pointer-events: auto; z-index: 300;`;
     
-    // Style default untuk tiap tombol
-    const btnStyle = `
-      width: 48px; height: 48px; border-radius: 12px;
-      background: rgba(0,0,0,0.7); border: 1px solid rgba(255,255,255,0.3);
-      color: #ffffff; font-size: 22px; display: flex;
-      align-items: center; justify-content: center;
-      cursor: pointer; touch-action: manipulation;
-    `;
+    const btnStyle = `width: 48px; height: 48px; border-radius: 12px; background: rgba(0,0,0,0.7); border: 1px solid rgba(255,255,255,0.3); color: #fff; font-size: 22px; display: flex; align-items: center; justify-content: center; cursor: pointer; touch-action: manipulation;`;
 
     this.buttonsEl.innerHTML = `
       <button id="btn-inventory" style="${btnStyle}">🎒</button>
@@ -211,18 +158,9 @@ export class Game {
     this.setupJoystick();
     this.setupLookZone();
 
-    this.buttonsEl.querySelector('#btn-inventory').addEventListener('click', (e) => {
-      e.stopPropagation();
-      this.openInventory();
-    });
-    this.buttonsEl.querySelector('#btn-fullscreen').addEventListener('click', (e) => {
-      e.stopPropagation();
-      this.toggleFullscreen();
-    });
-    this.buttonsEl.querySelector('#btn-settings').addEventListener('click', (e) => {
-      e.stopPropagation();
-      this.openPauseMenu();
-    });
+    this.buttonsEl.querySelector('#btn-inventory').addEventListener('click', (e) => { e.stopPropagation(); this.openInventory(); });
+    this.buttonsEl.querySelector('#btn-fullscreen').addEventListener('click', (e) => { e.stopPropagation(); this.toggleFullscreen(); });
+    this.buttonsEl.querySelector('#btn-settings').addEventListener('click', (e) => { e.stopPropagation(); this.openPauseMenu(); });
   }
 
   setupJoystick() {
@@ -267,18 +205,13 @@ export class Game {
       }
     }, { passive: false });
 
-    const endJoy = (e) => {
+    const endJoy = () => {
       if (this.joyTouchId === null) return;
-      for (const t of e.changedTouches) {
-        if (t.identifier === this.joyTouchId) {
-          this.joyTouchId = null;
-          this.joyValue.x = 0;
-          this.joyValue.y = 0;
-          base.style.opacity = '0';
-          knob.style.transform = 'translate(-50%, -50%)';
-          break;
-        }
-      }
+      this.joyTouchId = null;
+      this.joyValue.x = 0;
+      this.joyValue.y = 0;
+      base.style.opacity = '0';
+      knob.style.transform = 'translate(-50%, -50%)';
     };
     zone.addEventListener('touchend', endJoy);
     zone.addEventListener('touchcancel', endJoy);
@@ -312,17 +245,41 @@ export class Game {
       }
     }, { passive: false });
 
-    const endLook = (e) => {
+    const endLook = () => {
       if (this.lookTouchId === null) return;
-      for (const t of e.changedTouches) {
-        if (t.identifier === this.lookTouchId) {
-          this.lookTouchId = null;
-          break;
-        }
-      }
+      this.lookTouchId = null;
     };
     lookZone.addEventListener('touchend', endLook);
     lookZone.addEventListener('touchcancel', endLook);
+  }
+
+  openModal(kind) {
+    if (this.modal === kind) return false;
+    if (this.modal !== null) this.closeModal();
+    this.modal = kind;
+    return true;
+  }
+
+  closeModal() {
+    if (this.modal === null) return false;
+    const kind = this.modal;
+    this.modal = null;
+
+    if (kind === 'inventory' && this.inventoryUI) {
+      this.inventoryUI.hide();
+      this.inventoryUI = null;
+    }
+    if (kind === 'pause' && this.pauseEl) {
+      this.pauseEl.remove();
+      this.pauseEl = null;
+    }
+    
+    // Reset sentuhan biar ga nyangkut
+    this.joyTouchId = null;
+    this.lookTouchId = null;
+    this.joyValue.x = 0;
+    this.joyValue.y = 0;
+    return true;
   }
 
   openInventory() {
@@ -330,9 +287,7 @@ export class Game {
     this.inventoryUI = new InventoryUI(this.container, this.inventory, (itemId) => {
       const item = this.inventory.use(itemId);
       if (item) this.showToast(`Menggunakan ${item.name}`);
-    }, () => {
-      this.closeModal();
-    });
+    }, () => this.closeModal());
     this.inventoryUI.show();
   }
 
@@ -340,18 +295,13 @@ export class Game {
     if (!this.openModal('pause')) return;
     this.pauseEl = document.createElement('div');
     this.pauseEl.id = 'pause-menu';
-    this.pauseEl.style.cssText = `
-      position: absolute; inset: 0; background: rgba(5,5,15,0.78);
-      display: flex; align-items: center; justify-content: center;
-      z-index: 400; pointer-events: auto; padding: 24px;
-    `;
+    this.pauseEl.style.cssText = `position: absolute; inset: 0; background: rgba(5,5,15,0.78); display: flex; align-items: center; justify-content: center; z-index: 400; pointer-events: auto; padding: 24px;`;
     this.pauseEl.innerHTML = `
       <div style="width: 100%; max-width: 320px; background: rgba(20,20,40,0.98); border: 1px solid #2a2a40; border-radius: 16px; padding: 24px; display: flex; flex-direction: column; gap: 12px;">
         <h2 style="font-size: 18px; font-weight: 700; letter-spacing: 3px; text-align: center; margin-bottom: 8px; color: #6ee7b7;">PAUSED</h2>
-        
-        <button class="pause-btn" data-action="resume" style="padding: 14px 20px; border-radius: 10px; border: 1px solid #3b82f6; background: linear-gradient(135deg, #3b82f6, #2563eb); color: #fff; font-size: 15px; font-weight: 600; cursor: pointer;">RESUME</button>
+        <button class="pause-btn primary" data-action="resume" style="padding: 14px 20px; border-radius: 10px; border: 1px solid #3b82f6; background: linear-gradient(135deg, #3b82f6, #2563eb); color: #fff; font-size: 15px; font-weight: 600; cursor: pointer;">RESUME</button>
         <button class="pause-btn" data-action="settings" style="padding: 14px 20px; border-radius: 10px; border: 1px solid #2a2a40; background: rgba(40,40,60,0.8); color: #e8e8f0; font-size: 15px; font-weight: 600; cursor: pointer;">SETTINGS</button>
-        <button class="pause-btn" data-action="exit" style="padding: 14px 20px; border-radius: 10px; border: 1px solid #b03030; background: rgba(180,40,40,0.6); color: #e8e8f0; font-size: 15px; font-weight: 600; cursor: pointer;">EXIT TO HOME</button>
+        <button class="pause-btn danger" data-action="exit" style="padding: 14px 20px; border-radius: 10px; border: 1px solid #b03030; background: rgba(180,40,40,0.6); color: #e8e8f0; font-size: 15px; font-weight: 600; cursor: pointer;">EXIT TO HOME</button>
       </div>
     `;
     this.container.appendChild(this.pauseEl);
@@ -371,19 +321,16 @@ export class Game {
     this.pauseEl.innerHTML = `
       <div style="width: 100%; max-width: 320px; background: rgba(20,20,40,0.98); border: 1px solid #2a2a40; border-radius: 16px; padding: 24px; display: flex; flex-direction: column; gap: 12px;">
         <h2 style="font-size: 18px; font-weight: 700; letter-spacing: 3px; text-align: center; margin-bottom: 8px; color: #6ee7b7;">SETTINGS</h2>
-        
         <label style="display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: #9aa0b0;">
           Look sensitivity
           <input type="range" min="0.5" max="2.0" step="0.1" value="1.0" id="set-sens" style="width: 100%; accent-color: #3b82f6;" />
         </label>
-        
         <label style="display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: #9aa0b0;">
           Move speed
           <input type="range" min="2" max="7" step="0.5" value="4" id="set-speed" style="width: 100%; accent-color: #3b82f6;" />
         </label>
-        
-        <button class="pause-btn" data-action="back" style="padding: 14px 20px; border-radius: 10px; border: 1px solid #3b82f6; background: linear-gradient(135deg, #3b82f6, #2563eb); color: #fff; font-size: 15px; font-weight: 600; cursor: pointer; margin-top: 10px;">BACK</button>
-        <button class="pause-btn" data-action="exit" style="padding: 14px 20px; border-radius: 10px; border: 1px solid #b03030; background: rgba(180,40,40,0.6); color: #e8e8f0; font-size: 15px; font-weight: 600; cursor: pointer;">EXIT TO HOME</button>
+        <button class="pause-btn primary" data-action="back" style="padding: 14px 20px; border-radius: 10px; border: 1px solid #3b82f6; background: linear-gradient(135deg, #3b82f6, #2563eb); color: #fff; font-size: 15px; font-weight: 600; cursor: pointer; margin-top: 10px;">BACK</button>
+        <button class="pause-btn danger" data-action="exit" style="padding: 14px 20px; border-radius: 10px; border: 1px solid #b03030; background: rgba(180,40,40,0.6); color: #e8e8f0; font-size: 15px; font-weight: 600; cursor: pointer;">EXIT TO HOME</button>
       </div>
     `;
     
@@ -394,19 +341,9 @@ export class Game {
       this.controls.speed = parseFloat(e.target.value);
     });
     this.pauseEl.querySelector('[data-action="back"]').addEventListener('click', () => {
-      this.openPauseMenu(); 
-      // Karena openPauseMenu ngecek if (this.pauseEl) return, kita harus hapus dulu elemen lamanya
-      // Fix: panggil closeModal, lalu openPauseMenu
-    });
-    // Fix BACK button:
-    const backBtn = this.pauseEl.querySelector('[data-action="back"]');
-    const newBackBtn = backBtn.cloneNode(true);
-    backBtn.parentNode.replaceChild(newBackBtn, backBtn);
-    newBackBtn.addEventListener('click', () => {
       this.closeModal();
       this.openPauseMenu();
     });
-
     this.pauseEl.querySelector('[data-action="exit"]').addEventListener('click', () => {
       this.exitToHome();
     });
@@ -416,57 +353,25 @@ export class Game {
     const container = this.hudEl?.querySelector('#toast-container');
     if (!container) return;
     const toast = document.createElement('div');
-    toast.style.cssText = `
-      padding: 10px 16px; border-radius: 10px; background: rgba(20,20,40,0.95);
-      border: 1px solid #3b82f6; color: #e8e8f0; font-size: 12px;
-      text-align: center; animation: toast-in 0.3s ease;
-    `;
+    toast.style.cssText = `padding: 10px 16px; border-radius: 10px; background: rgba(20,20,40,0.95); border: 1px solid #3b82f6; color: #e8e8f0; font-size: 12px; text-align: center;`;
     toast.textContent = text;
     container.appendChild(toast);
-    setTimeout(() => {
-      toast.style.opacity = '0';
-      toast.style.transition = 'opacity 0.4s';
-      setTimeout(() => toast.remove(), 400);
-    }, 3000);
+    setTimeout(() => { toast.style.opacity = '0'; toast.style.transition = 'opacity 0.4s'; setTimeout(() => toast.remove(), 400); }, 3000);
   }
 
   async toggleFullscreen() {
     try {
       if (!document.fullscreenElement) {
         await document.documentElement.requestFullscreen({ navigationUI: 'hide' });
-        if (screen.orientation && screen.orientation.lock) {
-          try { await screen.orientation.lock('landscape'); } catch {}
-        }
       } else {
-        if (screen.orientation && screen.orientation.unlock) {
-          try { screen.orientation.unlock(); } catch {}
-        }
         await document.exitFullscreen();
       }
     } catch (err) { console.warn('Fullscreen failed:', err.message); }
   }
 
-  updateFullscreenBtn() {
-    const btn = this.buttonsEl?.querySelector('#btn-fullscreen');
-    if (btn) {
-      if (this.isFullscreen) {
-        btn.style.background = 'rgba(59,130,246,0.7)';
-        btn.style.borderColor = '#3b82f6';
-      } else {
-        btn.style.background = 'rgba(0,0,0,0.7)';
-        btn.style.borderColor = 'rgba(255,255,255,0.3)';
-      }
-    }
-  }
-
   async exitToHome() {
     this.closeModal();
-    if (document.fullscreenElement) {
-      try { await document.exitFullscreen(); } catch {}
-    }
-    if (screen.orientation && screen.orientation.unlock) {
-      try { screen.orientation.unlock(); } catch {}
-    }
+    if (document.fullscreenElement) { try { await document.exitFullscreen(); } catch {} }
     this.destroy();
     location.reload();
   }
@@ -496,18 +401,13 @@ export class Game {
     for (const u of this.unsubs) u();
     this.unsubs.length = 0;
     window.removeEventListener('resize', this.onResize);
-    document.removeEventListener('fullscreenchange', this.onFsChange);
     this.closeModal();
     this.playerSync?.destroy();
-    this.playerSync = null;
     this.controls?.disable();
     this.renderer?.dispose();
-    if (this.renderer?.domElement?.parentNode) {
-      this.renderer.domElement.parentNode.removeChild(this.renderer.domElement);
-    }
+    if (this.renderer?.domElement?.parentNode) { this.renderer.domElement.parentNode.removeChild(this.renderer.domElement); }
     if (this.hudEl?.parentNode) this.hudEl.parentNode.removeChild(this.hudEl);
     if (this.buttonsEl?.parentNode) this.buttonsEl.parentNode.removeChild(this.buttonsEl);
-    if (this.pauseEl?.parentNode) this.pauseEl.parentNode.removeChild(this.pauseEl);
     this.container.innerHTML = '';
   }
 }
