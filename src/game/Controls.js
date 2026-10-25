@@ -1,7 +1,8 @@
 export class Controls {
-  constructor(camera, canvas) {
+  constructor(camera, canvas, collision) {
     this.camera = camera;
     this.canvas = canvas;
+    this.collision = collision;
 
     this.yaw = 0;
     this.pitch = 0;
@@ -12,6 +13,16 @@ export class Controls {
     this.lookSensitivity = 0.0028;
     this.minPitch = -Math.PI / 2 + 0.01;
     this.maxPitch = Math.PI / 2 - 0.01;
+
+    // Camera bob
+    this.bobPhase = 0;
+    this.bobAmplitude = 0.045;
+    this.bobFrequency = 8.5;
+    this.currentBob = 0;
+    this.lastMoveSpeed = 0;
+
+    // Player collision radius
+    this.playerRadius = 0.35;
 
     this._onKeyDown = (e) => { this.keys[e.code] = true; };
     this._onKeyUp = (e) => { this.keys[e.code] = false; };
@@ -63,14 +74,12 @@ export class Controls {
   }
 
   update(dt) {
-    // Joystick: x = strafe (kanan positif), y = maju/mundur (atas negatif)
-    // Kita mau: dorong joystick ke ATAS (y negatif) = MAJU.
     let strafe = 0;
     let forward = 0;
 
     if (this.joystick && (this.joystick.x !== 0 || this.joystick.y !== 0)) {
       strafe = this.joystick.x;
-      forward = -this.joystick.y;   // <-- fix: ke atas joystick (y negatif) = maju (forward positif)
+      forward = -this.joystick.y;
     } else {
       if (this.keys['KeyW']) forward += 1;
       if (this.keys['KeyS']) forward -= 1;
@@ -78,25 +87,54 @@ export class Controls {
       if (this.keys['KeyA']) strafe -= 1;
     }
 
-    // Normalisasi diagonal
     const len = Math.hypot(strafe, forward);
     if (len > 1) { strafe /= len; forward /= len; }
 
-    // Arah gerak dalam world space berdasarkan yaw kamera.
-    // Forward kamera (Three.js) = -Z lokal. Diterapkan rotasi yaw:
-    //   worldForwardX = -sin(yaw)
-    //   worldForwardZ = -cos(yaw)
-    // Strafe kanan = (cos(yaw), -sin(yaw)) -- turunan dari cross.
     const sinY = Math.sin(this.yaw);
     const cosY = Math.cos(this.yaw);
-
     const worldX = -forward * sinY + strafe * cosY;
     const worldZ = -forward * cosY - strafe * sinY;
 
     const moveSpeed = this.speed * dt;
-    this.camera.position.x += worldX * moveSpeed;
-    this.camera.position.z += worldZ * moveSpeed;
-    this.camera.position.y = 1.6;
+    const dx = worldX * moveSpeed;
+    const dz = worldZ * moveSpeed;
+
+    // ---- Collision resolve: coba X lalu Z (slide) ----
+    const px = this.camera.position.x;
+    const pz = this.camera.position.z;
+    const r = this.playerRadius;
+
+    let nx = px;
+    let nz = pz;
+
+    // Geser X
+    if (!this.collision.isBlocked(px + dx, pz, r)) {
+      nx = px + dx;
+    }
+    // Geser Z (pakai nx yang sudah diupdate)
+    if (!this.collision.isBlocked(nx, pz + dz, r)) {
+      nz = pz + dz;
+    }
+
+    this.camera.position.x = nx;
+    this.camera.position.z = nz;
+
+    // ---- Camera bob ----
+    const actualSpeed = Math.hypot(nx - px, nz - pz) / Math.max(dt, 0.0001);
+    this.lastMoveSpeed = actualSpeed;
+
+    if (actualSpeed > 0.3) {
+      this.bobPhase += dt * this.bobFrequency;
+      const target = Math.sin(this.bobPhase) * this.bobAmplitude;
+      this.currentBob += (target - this.currentBob) * Math.min(1, dt * 12);
+    } else {
+      // Redam ke 0 saat berhenti
+      this.currentBob += (0 - this.currentBob) * Math.min(1, dt * 10);
+      if (Math.abs(this.currentBob) < 0.001) this.currentBob = 0;
+    }
+
+    // Eye height + bob
+    this.camera.position.y = 1.6 + this.currentBob;
 
     // Clamp world
     this.camera.position.x = Math.max(-37, Math.min(37, this.camera.position.x));
