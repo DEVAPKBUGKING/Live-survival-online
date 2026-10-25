@@ -676,3 +676,76 @@ html, body {
   cursor: pointer;
 }
 .history-join:disabled { opacity: 0.4; cursor: default; }
+
+/* ---------- History Room Panel ---------- */
+.history-list { 
+  display: flex; 
+  flex-direction: column; 
+  gap: 10px; 
+  max-height: 50vh; 
+  overflow-y: auto; 
+  margin-top: 10px;
+}
+
+.history-room {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  background: rgba(30, 30, 50, 0.6);
+  border: 1px solid #2a2a40;
+  border-radius: 10px;
+  gap: 12px;
+}
+
+.history-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.history-name { 
+  font-size: 14px; 
+  font-weight: 700; 
+  color: #e8e8f0; 
+}
+
+.history-code { 
+  font-family: monospace; 
+  font-size: 15px; 
+  font-weight: 800; 
+  color: #6ee7b7; 
+  letter-spacing: 2px; 
+}
+
+.history-status { 
+  font-size: 11px; 
+  color: #6b7280; 
+  font-weight: 600;
+}
+
+.history-join {
+  padding: 10px 16px;
+  border-radius: 8px;
+  border: 1px solid #3b82f6;
+  background: rgba(59, 130, 246, 0.2);
+  color: #60a5fa;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  letter-spacing: 1px;
+  transition: all 0.15s;
+}
+
+.history-join:active:not(:disabled) { 
+  transform: scale(0.95); 
+  background: rgba(59, 130, 246, 0.4); 
+}
+
+.history-join:disabled { 
+  opacity: 0.3; 
+  cursor: default; 
+  border-color: #2a2a40;
+  color: #6b7280;
+  background: rgba(40, 40, 60, 0.8);
+  }
