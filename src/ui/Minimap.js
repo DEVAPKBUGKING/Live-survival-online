@@ -1,19 +1,19 @@
 export class Minimap {
-  constructor(container) {
+  constructor() {
     this.canvas = document.createElement('canvas');
     this.canvas.width = 150;
     this.canvas.height = 150;
-    // Style mirip radar GTA
+    
+    // PAKSA TAMPIL DI ATAS SEGALANYA
     this.canvas.style.cssText = `
-      position: fixed; top: 16px; left: 16px; z-index: 9000;
+      position: fixed; top: 16px; left: 16px; z-index: 99999;
       background: rgba(10, 10, 20, 0.6); border: 2px solid #555;
       border-radius: 50%; pointer-events: none;
       box-shadow: 0 0 10px rgba(0,0,0,0.8);
     `;
-    this.container.appendChild(this.canvas);
+    document.body.appendChild(this.canvas);
     this.ctx = this.canvas.getContext('2d');
     
-    // Skala peta (1 meter dunia = 0.5 pixel di minimap)
     this.scale = 0.5;
   }
 
@@ -24,73 +24,57 @@ export class Minimap {
     const cx = w / 2;
     const cy = h / 2;
 
-    // Bersihkan canvas
     ctx.clearRect(0, 0, w, h);
-
-    // Simpan state
     ctx.save();
     
-    // Potong jadi lingkaran
     ctx.beginPath();
     ctx.arc(cx, cy, cx, 0, Math.PI * 2);
     ctx.clip();
 
-    // Background tanah
-    ctx.fillStyle = '#2a4a2a'; // Hijau gelap
+    ctx.fillStyle = '#2a4a2a'; // Warna tanah
     ctx.fillRect(0, 0, w, h);
 
-    // Geser titik tengah canvas ke posisi pemain
     ctx.translate(cx, cy);
-    
-    // Rotasi peta berdasarkan arah hadap pemain (Yaw)
-    // Kamera Three.js: 0 = lurus ke depan (-Z). 
-    // Di Canvas 2D: 0 = kanan (+X). Maka kita rotasi -90 derajat (-Math.PI/2)
     ctx.rotate(-playerYaw);
 
-    // Gambar Jalan Utama (Membentang dari Z -100 sampai Z 50)
+    // Jalan
     ctx.fillStyle = '#444';
-    // Posisi X=0, Z dari -100 sampai 50, lebar 12
     ctx.fillRect(-6 * this.scale, -50 * this.scale, 12 * this.scale, 150 * this.scale);
 
-    // Gambar Titik Interaksi (Bandara, Stasiun)
-    for (const obj of interactables) {
-      // Hitung posisi relatif ke pemain
-      const dx = (obj.position.x - playerPos.x) * this.scale;
-      const dz = (obj.position.z - playerPos.z) * this.scale;
-      
-      // Karena rotasi, Y di canvas adalah Z di dunia
-      ctx.beginPath();
-      ctx.arc(dx, dz, 5, 0, Math.PI * 2);
-      
-      if (obj.type === 'airport') {
-        ctx.fillStyle = '#3b82f6'; // Biru untuk Bandara
-      } else if (obj.type === 'subway') {
-        ctx.fillStyle = '#ef4444'; // Merah untuk Stasiun
-      } else {
-        ctx.fillStyle = '#6ee7b7'; // Hijau untuk rumah
+    // Titik-titik (Bandara, Stasiun, dll)
+    if (interactables) {
+      for (const obj of interactables) {
+        const dx = (obj.position.x - playerPos.x) * this.scale;
+        const dz = (obj.position.z - playerPos.z) * this.scale;
+        
+        ctx.beginPath();
+        ctx.arc(dx, dz, 5, 0, Math.PI * 2);
+        
+        if (obj.type === 'airport') ctx.fillStyle = '#3b82f6';
+        else if (obj.type === 'subway') ctx.fillStyle = '#ef4444';
+        else ctx.fillStyle = '#6ee7b7';
+        ctx.fill();
       }
-      ctx.fill();
     }
 
-    // Gambar pemain (Titik kuning di tengah)
+    // Titik pemain
     ctx.beginPath();
     ctx.arc(0, 0, 6, 0, Math.PI * 2);
     ctx.fillStyle = '#fbbf24';
     ctx.fill();
 
-    // Gambar arah pandang pemain (Segitiga)
+    // Segitiga arah pandang
     ctx.beginPath();
-    ctx.moveTo(0, -10); // Ujung depan
-    ctx.lineTo(-6, 6);  // Kiri belakang
-    ctx.lineTo(6, 6);   // Kanan belakang
+    ctx.moveTo(0, -10);
+    ctx.lineTo(-6, 6);
+    ctx.lineTo(6, 6);
     ctx.closePath();
     ctx.fillStyle = '#fff';
     ctx.fill();
 
-    // Kembalikan state
     ctx.restore();
 
-    // Gambar border lingkaran luar
+    // Border luar
     ctx.beginPath();
     ctx.arc(cx, cy, cx - 2, 0, Math.PI * 2);
     ctx.strokeStyle = '#888';
