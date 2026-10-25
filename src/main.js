@@ -1,6 +1,8 @@
 import './style.css';
+import { supabase } from './config/supabase.js';
 import { Game } from './game/Game.js';
 import { MainMenu } from './ui/MainMenu.js';
+import { LoginUI } from './ui/LoginUI.js';
 import { CreateRoom } from './ui/CreateRoom.js';
 import { JoinRoom } from './ui/JoinRoom.js';
 import { HistoryRooms } from './ui/HistoryRooms.js';
@@ -8,72 +10,96 @@ import { Rooms } from './multiplayer/Rooms.js';
 
 const app = document.getElementById('app');
 const rooms = new Rooms();
-let currentGame = null;
 
-const menu = new MainMenu(app, {
-  onPlay: () => showHistory(),
-  onCreate: () => showCreateRoom(),
-  onJoin: () => showJoinRoom(),
-  onSettings: () => alert('Settings global akan ditambahkan nanti.')
+// Cek sesi login saat halaman dibuka
+supabase.auth.getSession().then(({ data: { session } }) => {
+  if (session) {
+    loadProfileAndMenu(session.user);
+  } else {
+    showLogin();
+  }
 });
-menu.show();
 
-function showHistory() {
-  menu.hide();
+function showLogin() {
+  const login = new LoginUI(app, (user) => {
+    loadProfileAndMenu(user);
+  });
+  login.show();
+}
+
+async function loadProfileAndMenu(user) {
+  // Ambil data profil (uang, ktp, admin) dari database
+  const { data: profile, error } = await supabase
+    .from('profiles')
+    .select('*')
+    .eq('id', user.id)
+    .single();
+
+  if (error || !profile) {
+    alert('Gagal memuat profil: ' + (error?.message || 'Data tidak ditemukan'));
+    return;
+  }
+
+  const menu = new MainMenu(app, {
+    onPlay: () => showHistory(profile),
+    onCreate: () => showCreateRoom(profile),
+    onJoin: () => showJoinRoom(profile),
+    onSettings: () => {
+      if (confirm('Apakah kamu ingin logout?')) {
+        supabase.auth.signOut().then(() => location.reload());
+      }
+    }
+  });
+  menu.show();
+}
+
+function showHistory(profile) {
   const history = new HistoryRooms(app,
     async (code) => {
-      const name = localStorage.getItem('lso_player_name') || 'Player';
       try {
-        await rooms.joinRoom({ code, name });
-        history.hide();
-        await enterWorld();
+        await rooms.joinRoom({ code, name: profile.username || 'Player' });
+        enterWorld(profile);
       } catch (e) {
         alert(e.message);
-        menu.show();
       }
     },
-    () => menu.show()
+    () => location.reload()
   );
   history.show();
 }
 
-function showCreateRoom() {
-  menu.hide();
+function showCreateRoom(profile) {
   const screen = new CreateRoom(app,
     async ({ name, roomName, maxPlayers }) => {
       await rooms.createRoom({ name, roomName, maxPlayers });
-      screen.hide();
-      await enterWorld();
+      enterWorld(profile);
     },
-    () => menu.show()
+    () => location.reload()
   );
   screen.show();
 }
 
-function showJoinRoom() {
-  menu.hide();
+function showJoinRoom(profile) {
   const screen = new JoinRoom(app,
     async ({ code, name }) => {
       await rooms.joinRoom({ code, name });
-      screen.hide();
-      await enterWorld();
+      enterWorld(profile);
     },
-    () => menu.show()
+    () => location.reload()
   );
   screen.show();
 }
 
-// Langsung masuk dunia, tidak ada lobby, tidak ada START
-async function enterWorld() {
+async function enterWorld(profile) {
   showLoading();
   await new Promise(r => setTimeout(r, 30));
 
   window.__rooms = rooms;
-  currentGame = new Game(app);
-  window.__game = currentGame;
+  const game = new Game(app, profile); // Oper data profil ke Game
+  window.__game = game;
 
   try {
-    await currentGame.start((p, label) => updateLoading(p, label));
+    await game.start((p, label) => updateLoading(p, label));
     await new Promise(r => setTimeout(r, 200));
     hideLoading();
   } catch (err) {
@@ -82,7 +108,7 @@ async function enterWorld() {
   }
 }
 
-// Loading
+// UI Loading
 let loadingEl = null, loadingBar = null, loadingLabel = null;
 function showLoading() {
   loadingEl = document.createElement('div');
