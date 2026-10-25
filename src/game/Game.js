@@ -127,10 +127,8 @@ export class Game {
     this.animate();
   }
 
-  // ---------- Modal management (idempotent) ----------
   openModal(kind) {
     if (this.modal === kind) return false;
-    // Tutup yang sekarang dulu
     if (this.modal !== null) this.closeModal();
     this.modal = kind;
     this.resetTouchState();
@@ -167,7 +165,6 @@ export class Game {
     if (knob) knob.style.transform = 'translate(-50%, -50%)';
   }
 
-  // ---------- HUD ----------
   createHUD() {
     this.hudEl = document.createElement('div');
     this.hudEl.id = 'game-hud';
@@ -307,7 +304,6 @@ export class Game {
     lookZone.addEventListener('touchcancel', endLook);
   }
 
-  // ---------- Inventory ----------
   openInventory() {
     if (!this.openModal('inventory')) return;
     this.inventoryUI = new InventoryUI(this.container, this.inventory, (itemId) => {
@@ -319,7 +315,6 @@ export class Game {
     this.inventoryUI.show();
   }
 
-  // ---------- Pause menu ----------
   openPauseMenu() {
     if (!this.openModal('pause')) return;
     this.pauseEl = document.createElement('div');
@@ -366,7 +361,6 @@ export class Game {
       this.controls.speed = parseFloat(e.target.value);
     });
     panel.querySelector('[data-action="back"]').addEventListener('click', () => {
-      // Kembali ke pause panel tanpa mengubah this.modal
       if (!this.pauseEl) return;
       this.pauseEl.innerHTML = `
         <div class="pause-panel">
@@ -390,7 +384,6 @@ export class Game {
     });
   }
 
-  // ---------- Toast ----------
   showToast(text) {
     const container = this.hudEl?.querySelector('#toast-container');
     if (!container) return;
@@ -404,7 +397,6 @@ export class Game {
     }, 3000);
   }
 
-  // ---------- Fullscreen ----------
   async toggleFullscreen() {
     try {
       if (!document.fullscreenElement) {
@@ -426,7 +418,6 @@ export class Game {
     if (btn) btn.classList.toggle('fs-on', this.isFullscreen);
   }
 
-  // ---------- Exit ----------
   async exitToHome() {
     this.closeModal();
     if (document.fullscreenElement) {
