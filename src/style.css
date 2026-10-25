@@ -175,4 +175,81 @@ html, body {
   justify-content: center;
   cursor: pointer;
   backdrop-filter: blur(6px);
-  -
+  -webkit-backdrop-filter: blur(6px);
+  transition: transform 0.1s, background 0.15s;
+}
+#hud-buttons button:active {
+  transform: scale(0.92);
+  background: rgba(60, 60, 90, 0.7);
+}
+#hud-buttons button.fs-on {
+  background: rgba(59, 130, 246, 0.6);
+  border-color: #3b82f6;
+}
+
+/* ---------- Pause menu ---------- */
+#pause-menu {
+  position: absolute;
+  inset: 0;
+  background: rgba(5, 5, 15, 0.75);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 200;
+  padding: 24px;
+}
+
+.pause-panel {
+  width: 100%;
+  max-width: 320px;
+  background: rgba(20, 20, 40, 0.95);
+  border: 1px solid #2a2a40;
+  border-radius: 16px;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.pause-panel h2 {
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: 3px;
+  text-align: center;
+  margin-bottom: 8px;
+  color: #6ee7b7;
+}
+
+.pause-btn {
+  padding: 14px 20px;
+  border: 1px solid #2a2a40;
+  border-radius: 10px;
+  background: rgba(40, 40, 60, 0.8);
+  color: #e8e8f0;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.1s, background 0.15s;
+}
+.pause-btn:active { transform: scale(0.97); background: rgba(70, 70, 100, 0.9); }
+.pause-btn.primary { background: linear-gradient(135deg, #3b82f6, #2563eb); border-color: #3b82f6; }
+.pause-btn.danger { background: rgba(180, 40, 40, 0.6); border-color: #b03030; }
+
+.pause-label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+  color: #9aa0b0;
+}
+.pause-label input[type="range"] {
+  width: 100%;
+  accent-color: #3b82f6;
+}
+
+/* Landscape phone: sembunyikan sebagian UI? opsional */
+@media (orientation: landscape) and (max-height: 500px) {
+  #hud-buttons button { width: 40px; height: 40px; font-size: 18px; }
+}
