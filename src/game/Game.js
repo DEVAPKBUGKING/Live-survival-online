@@ -30,7 +30,6 @@ export class Game {
     this.isFullscreen = false;
     this.unsubs = [];
 
-    // Touch State
     this.joyTouchId = null;
     this.lookTouchId = null;
     this.joyCenter = { x: 0, y: 0 };
@@ -117,14 +116,15 @@ export class Game {
   }
 
   createHUD() {
-    // HUD Visual
     this.hudEl = document.createElement('div');
     this.hudEl.id = 'game-hud';
-    this.hudEl.style.cssText = `position: absolute; inset: 0; pointer-events: none; z-index: 50;`;
+    this.hudEl.style.cssText = `position: fixed; inset: 0; pointer-events: none; z-index: 50;`;
+    
     this.hudEl.innerHTML = `
       <div id="crosshair" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 6px; height: 6px; border-radius: 50%; background: rgba(255,255,255,0.75); box-shadow: 0 0 6px rgba(0,0,0,0.6);"></div>
       
-      <div id="joystick-base" style="position: fixed; width: 100px; height: 100px; border-radius: 50%; background: rgba(255,255,255,0.15); border: 2px solid rgba(255,255,255,0.3); opacity: 0; transition: opacity 0.1s; pointer-events: none; z-index: 60;">
+      <!-- Joystick Base dipindah ke HTML -->
+      <div id="joystick-base" style="position: absolute; width: 100px; height: 100px; border-radius: 50%; background: rgba(255,255,255,0.15); border: 2px solid rgba(255,255,255,0.3); opacity: 0; transition: opacity 0.1s; pointer-events: none; z-index: 60;">
         <div id="joystick-knob" style="position: absolute; width: 44px; height: 44px; border-radius: 50%; background: rgba(255,255,255,0.5); top: 50%; left: 50%; transform: translate(-50%, -50%); pointer-events: none;"></div>
       </div>
       
@@ -132,7 +132,6 @@ export class Game {
     `;
     this.container.appendChild(this.hudEl);
 
-    // Tombol HUD (Paling atas)
     this.buttonsEl = document.createElement('div');
     this.buttonsEl.id = 'hud-buttons';
     this.buttonsEl.style.cssText = `position: fixed; top: 12px; right: 12px; display: flex; gap: 8px; pointer-events: auto; z-index: 9999;`;
@@ -168,15 +167,10 @@ export class Game {
       this.joyValue.y = ky / this.joyRadius;
     };
 
-    // Event Listener dipasang di document, bukan di div
     document.addEventListener('touchstart', (e) => {
       if (this.modal !== null) return;
 
-      // Jika tap kena tombol HUD, abaikan
-      if (e.target.closest('#hud-buttons') || e.target.closest('#pause-menu') || e.target.closest('#inventory-screen')) return;
-
       for (const t of e.changedTouches) {
-        // Setengah kiri layar = Joystick
         if (t.clientX < window.innerWidth / 2 && this.joyTouchId === null) {
           this.joyTouchId = t.identifier;
           this.joyCenter.x = t.clientX;
@@ -186,7 +180,6 @@ export class Game {
           base.style.opacity = '1';
           updateKnob(0, 0);
         } 
-        // Setengah kanan layar = Geser Kamera
         else if (t.clientX >= window.innerWidth / 2 && this.lookTouchId === null) {
           this.lookTouchId = t.identifier;
           this.lastLook.x = t.clientX;
@@ -250,7 +243,6 @@ export class Game {
       this.pauseEl = null;
     }
     
-    // Reset sentuhan biar ga nyangkut
     this.joyTouchId = null;
     this.lookTouchId = null;
     this.joyValue.x = 0;
@@ -341,7 +333,14 @@ export class Game {
     try {
       if (!document.fullscreenElement) {
         await document.documentElement.requestFullscreen({ navigationUI: 'hide' });
+        // Coba kunci landscape dengan try-catch agar tidak crash
+        if (screen.orientation && screen.orientation.lock) {
+          screen.orientation.lock('landscape').catch(() => {});
+        }
       } else {
+        if (screen.orientation && screen.orientation.unlock) {
+          screen.orientation.unlock();
+        }
         await document.exitFullscreen();
       }
     } catch (err) { console.warn('Fullscreen failed:', err.message); }
@@ -350,6 +349,7 @@ export class Game {
   async exitToHome() {
     this.closeModal();
     if (document.fullscreenElement) { try { await document.exitFullscreen(); } catch {} }
+    if (screen.orientation && screen.orientation.unlock) { try { screen.orientation.unlock(); } catch {} }
     this.destroy();
     location.reload();
   }
