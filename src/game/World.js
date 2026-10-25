@@ -212,4 +212,99 @@ export class World {
       const x = Math.cos(angle) * dist;
       const z = Math.sin(angle) * dist;
       if (Math.abs(x) < 5.5 && Math.abs(z) < 5.5) continue;
-      const s = 0.2
+      const s = 0.2 + Math.random() * 0.3;
+      const rock = new THREE.Mesh(new THREE.IcosahedronGeometry(s, 1), rockMat);
+      rock.position.set(x, s * 0.5, z);
+      rock.rotation.set(Math.random(), Math.random(), Math.random());
+      rock.castShadow = true;
+      this.scene.add(rock);
+      this.collision.addBox(x - s, 0, z - s, x + s, s * 2, z + s);
+    }
+  }
+
+  buildAnimals() {
+    const bodyMat = new THREE.MeshLambertMaterial({ color: 0xc8a070 });
+    const headMat = new THREE.MeshLambertMaterial({ color: 0xe0c090 });
+
+    for (let i = 0; i < 4; i++) {
+      const group = new THREE.Group();
+
+      const body = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.35, 0.8), bodyMat);
+      body.position.y = 0.4;
+      body.castShadow = true;
+      group.add(body);
+
+      const head = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.3, 0.3), headMat);
+      head.position.set(0, 0.6, 0.5);
+      head.castShadow = true;
+      group.add(head);
+
+      const legMat = new THREE.MeshLambertMaterial({ color: 0x8a6a4a });
+      for (const [lx, lz] of [[-0.18, -0.25], [0.18, -0.25], [-0.18, 0.25], [0.18, 0.25]]) {
+        const leg = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.3, 0.1), legMat);
+        leg.position.set(lx, 0.15, lz);
+        group.add(leg);
+      }
+
+      const startX = (Math.random() - 0.5) * 30;
+      const startZ = (Math.random() - 0.5) * 30;
+      group.position.set(startX, 0, startZ);
+      this.scene.add(group);
+
+      this.animals.push({
+        group,
+        angle: Math.random() * Math.PI * 2,
+        speed: 0.5 + Math.random() * 0.5,
+        timer: 2 + Math.random() * 3
+      });
+    }
+  }
+
+  updateAnimals(dt) {
+    for (const a of this.animals) {
+      a.timer -= dt;
+      if (a.timer <= 0) {
+        a.angle += (Math.random() - 0.5) * 1.5;
+        a.timer = 2 + Math.random() * 3;
+      }
+      a.group.position.x += Math.cos(a.angle) * a.speed * dt;
+      a.group.position.z += Math.sin(a.angle) * a.speed * dt;
+      a.group.rotation.y = -a.angle + Math.PI / 2;
+
+      if (Math.abs(a.group.position.x) > 35) a.angle = Math.PI - a.angle;
+      if (Math.abs(a.group.position.z) > 35) a.angle = -a.angle;
+    }
+  }
+
+  buildBoundary() {
+    const boundMat = new THREE.MeshLambertMaterial({
+      color: 0x2a2a3a, transparent: true, opacity: 0.12
+    });
+    const h = 3;
+    this.addBox(0, h / 2, -38, 78, h, 0.3, boundMat);
+    this.addBox(0, h / 2, 38, 78, h, 0.3, boundMat);
+    this.addBox(-38, h / 2, 0, 0.3, h, 78, boundMat);
+    this.addBox(38, h / 2, 0, 0.3, h, 78, boundMat);
+
+    this.collision.addBox(-39, 0, -39, 39, h, -37.7);
+    this.collision.addBox(-39, 0, 37.7, 39, h, 39);
+    this.collision.addBox(-39, 0, -39, -37.7, h, 39);
+    this.collision.addBox(37.7, 0, -39, 39, h, 39);
+  }
+
+  addWall(x, y, z, w, h, d, material) {
+    const mesh = this.addBox(x, y, z, w, h, d, material);
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    this.collision.addBox(x - w / 2, 0, z - d / 2, x + w / 2, h, z + d / 2);
+    return mesh;
+  }
+
+  addBox(x, y, z, w, h, d, material) {
+    const geo = new THREE.BoxGeometry(w, h, d);
+    const mesh = new THREE.Mesh(geo, material);
+    mesh.position.set(x, y, z);
+    this.scene.add(mesh);
+    return mesh;
+  }
+}
