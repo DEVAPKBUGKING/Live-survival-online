@@ -28,7 +28,6 @@ function showLogin() {
 }
 
 async function loadProfileAndMenu(user) {
-  // Ambil data profil (uang, ktp, admin) dari database
   const { data: profile, error } = await supabase
     .from('profiles')
     .select('*')
@@ -37,6 +36,7 @@ async function loadProfileAndMenu(user) {
 
   if (error || !profile) {
     alert('Gagal memuat profil: ' + (error?.message || 'Data tidak ditemukan'));
+    supabase.auth.signOut().then(() => location.reload());
     return;
   }
 
@@ -57,7 +57,7 @@ function showHistory(profile) {
   const history = new HistoryRooms(app,
     async (code) => {
       try {
-        await rooms.joinRoom({ code, name: profile.username || 'Player' });
+        await rooms.joinRoom({ code, name: profile.username });
         enterWorld(profile);
       } catch (e) {
         alert(e.message);
@@ -95,7 +95,7 @@ async function enterWorld(profile) {
   await new Promise(r => setTimeout(r, 30));
 
   window.__rooms = rooms;
-  const game = new Game(app, profile); // Oper data profil ke Game
+  const game = new Game(app, profile); // Oper profil (uang, admin) ke Game
   window.__game = game;
 
   try {
