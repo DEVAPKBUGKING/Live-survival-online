@@ -165,17 +165,26 @@ export class Game {
     zone.addEventListener('touchcancel', endJoy);
 
     const lookZone = this.hudEl.querySelector('#look-zone');
+        const lookZone = this.hudEl.querySelector('#look-zone');
     let lookTouchId = null;
     let lastLook = { x: 0, y: 0 };
 
+    // Tracking touch ID: only the finger that started in look zone drives the camera.
     lookZone.addEventListener('touchstart', (e) => {
+      if (lookTouchId !== null) return; // already tracking a finger
       const t = e.changedTouches[0];
+      // Ensure the touch started inside look zone bounds
+      const rect = lookZone.getBoundingClientRect();
+      if (t.clientX < rect.left || t.clientX > rect.right ||
+          t.clientY < rect.top || t.clientY > rect.bottom) return;
       lookTouchId = t.identifier;
       lastLook.x = t.clientX;
       lastLook.y = t.clientY;
-    }, { passive: true });
+      e.preventDefault();
+    }, { passive: false });
 
     lookZone.addEventListener('touchmove', (e) => {
+      if (lookTouchId === null) return;
       for (const t of e.changedTouches) {
         if (t.identifier === lookTouchId) {
           const dx = t.clientX - lastLook.x;
@@ -183,11 +192,20 @@ export class Game {
           lastLook.x = t.clientX;
           lastLook.y = t.clientY;
           this.controls.lookDelta(dx, dy);
+          e.preventDefault();
         }
       }
-    }, { passive: true });
+    }, { passive: false });
 
-    const endLook = () => { lookTouchId = null; };
+    const endLook = (e) => {
+      if (lookTouchId === null) return;
+      for (const t of e.changedTouches) {
+        if (t.identifier === lookTouchId) {
+          lookTouchId = null;
+          break;
+        }
+      }
+    };
     lookZone.addEventListener('touchend', endLook);
     lookZone.addEventListener('touchcancel', endLook);
 
