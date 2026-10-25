@@ -17,17 +17,20 @@ export class Game {
     this.collision = new Collision();
     this.playerSync = null;
     this.inventory = null;
+
+    // Modal state: null | 'inventory' | 'pause'
+    this.modal = null;
     this.inventoryUI = null;
+    this.pauseEl = null;
+
     this.running = false;
-    this.paused = false;
     this.clock = new THREE.Clock();
     this.hudEl = null;
-    this.pauseEl = null;
+    this.buttonsEl = null;
     this.joyValue = { x: 0, y: 0 };
     this.isFullscreen = false;
     this.unsubs = [];
 
-    // Per-zone touch identifier tracking
     this.joyTouchId = null;
     this.lookTouchId = null;
     this.joyCenter = { x: 0, y: 0 };
@@ -35,6 +38,10 @@ export class Game {
     this.joyRadius = 50;
 
     this.knownPlayers = new Set();
+  }
+
+  get paused() {
+    return this.modal !== null;
   }
 
   async start(onProgress) {
@@ -120,8 +127,48 @@ export class Game {
     this.animate();
   }
 
+  // ---------- Modal management (idempotent) ----------
+  openModal(kind) {
+    if (this.modal === kind) return false;
+    // Tutup yang sekarang dulu
+    if (this.modal !== null) this.closeModal();
+    this.modal = kind;
+    this.resetTouchState();
+    return true;
+  }
+
+  closeModal() {
+    if (this.modal === null) return false;
+    const kind = this.modal;
+    this.modal = null;
+
+    if (kind === 'inventory' && this.inventoryUI) {
+      const ui = this.inventoryUI;
+      this.inventoryUI = null;
+      ui.hide();
+    }
+    if (kind === 'pause' && this.pauseEl) {
+      const el = this.pauseEl;
+      this.pauseEl = null;
+      el.remove();
+    }
+    this.resetTouchState();
+    return true;
+  }
+
+  resetTouchState() {
+    this.joyTouchId = null;
+    this.lookTouchId = null;
+    this.joyValue.x = 0;
+    this.joyValue.y = 0;
+    const base = this.hudEl?.querySelector('#joystick-base');
+    const knob = this.hudEl?.querySelector('#joystick-knob');
+    if (base) base.classList.remove('active');
+    if (knob) knob.style.transform = 'translate(-50%, -50%)';
+  }
+
+  // ---------- HUD ----------
   createHUD() {
-    // ---- Game HUD (joystick + look + toast) ----
     this.hudEl = document.createElement('div');
     this.hudEl.id = 'game-hud';
     this.hudEl.classList.add('active');
@@ -134,7 +181,6 @@ export class Game {
     `;
     this.container.appendChild(this.hudEl);
 
-    // ---- HUD buttons (sibling, di luar game-hud) ----
     this.buttonsEl = document.createElement('div');
     this.buttonsEl.id = 'hud-buttons';
     this.buttonsEl.innerHTML = `
@@ -178,7 +224,7 @@ export class Game {
     };
 
     zone.addEventListener('touchstart', (e) => {
-      if (this.paused) return;
+      if (this.modal !== null) return;
       if (this.joyTouchId !== null) return;
       const t = e.changedTouches[0];
       this.joyTouchId = t.identifier;
@@ -193,7 +239,7 @@ export class Game {
     }, { passive: false });
 
     zone.addEventListener('touchmove', (e) => {
-      if (this.paused || this.joyTouchId === null) return;
+      if (this.modal !== null || this.joyTouchId === null) return;
       for (const t of e.changedTouches) {
         if (t.identifier === this.joyTouchId) {
           updateKnob(t.clientX - this.joyCenter.x, t.clientY - this.joyCenter.y);
@@ -224,19 +270,17 @@ export class Game {
     const lookZone = this.hudEl.querySelector('#look-zone');
 
     lookZone.addEventListener('touchstart', (e) => {
-      if (this.paused) return;
+      if (this.modal !== null) return;
       if (this.lookTouchId !== null) return;
-      // Hanya terima touch yang target-nya lookZone atau child-nya (bukan tombol HUD)
       if (e.target !== lookZone) return;
       const t = e.changedTouches[0];
       this.lookTouchId = t.identifier;
       this.lastLook.x = t.clientX;
       this.lastLook.y = t.clientY;
-      // TIDAK preventDefault di sini — biarkan click pada tombol lain lewat
     }, { passive: true });
 
     lookZone.addEventListener('touchmove', (e) => {
-      if (this.paused || this.lookTouchId === null) return;
+      if (this.modal !== null || this.lookTouchId === null) return;
       for (const t of e.changedTouches) {
         if (t.identifier === this.lookTouchId) {
           const dx = t.clientX - this.lastLook.x;
@@ -263,80 +307,21 @@ export class Game {
     lookZone.addEventListener('touchcancel', endLook);
   }
 
-  // Reset semua touch state — dipanggil saat pause/unpause
-  resetTouchState() {
-    this.joyTouchId = null;
-    this.lookTouchId = null;
-    this.joyValue.x = 0;
-    this.joyValue.y = 0;
-    const base = this.hudEl?.querySelector('#joystick-base');
-    const knob = this.hudEl?.querySelector('#joystick-knob');
-    if (base) base.classList.remove('active');
-    if (knob) knob.style.transform = 'translate(-50%, -50%)';
-  }
-
-  setPaused(p) {
-    this.paused = p;
-    this.resetTouchState();
-  }
-
+  // ---------- Inventory ----------
   openInventory() {
-    if (this.inventoryUI) return;
-    this.setPaused(true);
+    if (!this.openModal('inventory')) return;
     this.inventoryUI = new InventoryUI(this.container, this.inventory, (itemId) => {
       const item = this.inventory.use(itemId);
       if (item) this.showToast(`Menggunakan ${item.name}`);
-      this.closeInventory();
+    }, () => {
+      this.closeModal();
     });
-    this.inventoryUI.onClose = () => this.closeInventory();
     this.inventoryUI.show();
   }
 
-  closeInventory() {
-    if (this.inventoryUI) {
-      this.inventoryUI.hide();
-      this.inventoryUI = null;
-    }
-    this.setPaused(false);
-  }
-
-  showToast(text) {
-    const container = this.hudEl?.querySelector('#toast-container');
-    if (!container) return;
-    const toast = document.createElement('div');
-    toast.className = 'toast';
-    toast.textContent = text;
-    container.appendChild(toast);
-    setTimeout(() => {
-      toast.classList.add('fade-out');
-      setTimeout(() => toast.remove(), 400);
-    }, 3000);
-  }
-
-  async toggleFullscreen() {
-    try {
-      if (!document.fullscreenElement) {
-        await document.documentElement.requestFullscreen({ navigationUI: 'hide' });
-        if (screen.orientation && screen.orientation.lock) {
-          try { await screen.orientation.lock('landscape'); } catch {}
-        }
-      } else {
-        if (screen.orientation && screen.orientation.unlock) {
-          try { screen.orientation.unlock(); } catch {}
-        }
-        await document.exitFullscreen();
-      }
-    } catch (err) { console.warn('Fullscreen failed:', err.message); }
-  }
-
-  updateFullscreenBtn() {
-    const btn = this.buttonsEl?.querySelector('#btn-fullscreen');
-    if (btn) btn.classList.toggle('fs-on', this.isFullscreen);
-  }
-
+  // ---------- Pause menu ----------
   openPauseMenu() {
-    if (this.pauseEl) return;
-    this.setPaused(true);
+    if (!this.openModal('pause')) return;
     this.pauseEl = document.createElement('div');
     this.pauseEl.id = 'pause-menu';
     this.pauseEl.innerHTML = `
@@ -351,16 +336,11 @@ export class Game {
     this.pauseEl.querySelectorAll('.pause-btn').forEach(btn => {
       btn.addEventListener('click', () => {
         const action = btn.dataset.action;
-        if (action === 'resume') this.closePauseMenu();
+        if (action === 'resume') this.closeModal();
         else if (action === 'settings') this.openSettings();
         else if (action === 'exit') this.exitToHome();
       });
     });
-  }
-
-  closePauseMenu() {
-    if (this.pauseEl) { this.pauseEl.remove(); this.pauseEl = null; }
-    this.setPaused(false);
   }
 
   openSettings() {
@@ -386,18 +366,69 @@ export class Game {
       this.controls.speed = parseFloat(e.target.value);
     });
     panel.querySelector('[data-action="back"]').addEventListener('click', () => {
-      this.pauseEl.remove();
-      this.pauseEl = null;
-      this.openPauseMenu();
+      // Kembali ke pause panel tanpa mengubah this.modal
+      if (!this.pauseEl) return;
+      this.pauseEl.innerHTML = `
+        <div class="pause-panel">
+          <h2>PAUSED</h2>
+          <button class="pause-btn primary" data-action="resume">RESUME</button>
+          <button class="pause-btn" data-action="settings">SETTINGS</button>
+          <button class="pause-btn danger" data-action="exit">EXIT TO HOME</button>
+        </div>
+      `;
+      this.pauseEl.querySelectorAll('.pause-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const action = btn.dataset.action;
+          if (action === 'resume') this.closeModal();
+          else if (action === 'settings') this.openSettings();
+          else if (action === 'exit') this.exitToHome();
+        });
+      });
     });
     panel.querySelector('[data-action="exit"]').addEventListener('click', () => {
       this.exitToHome();
     });
   }
 
+  // ---------- Toast ----------
+  showToast(text) {
+    const container = this.hudEl?.querySelector('#toast-container');
+    if (!container) return;
+    const toast = document.createElement('div');
+    toast.className = 'toast';
+    toast.textContent = text;
+    container.appendChild(toast);
+    setTimeout(() => {
+      toast.classList.add('fade-out');
+      setTimeout(() => toast.remove(), 400);
+    }, 3000);
+  }
+
+  // ---------- Fullscreen ----------
+  async toggleFullscreen() {
+    try {
+      if (!document.fullscreenElement) {
+        await document.documentElement.requestFullscreen({ navigationUI: 'hide' });
+        if (screen.orientation && screen.orientation.lock) {
+          try { await screen.orientation.lock('landscape'); } catch {}
+        }
+      } else {
+        if (screen.orientation && screen.orientation.unlock) {
+          try { screen.orientation.unlock(); } catch {}
+        }
+        await document.exitFullscreen();
+      }
+    } catch (err) { console.warn('Fullscreen failed:', err.message); }
+  }
+
+  updateFullscreenBtn() {
+    const btn = this.buttonsEl?.querySelector('#btn-fullscreen');
+    if (btn) btn.classList.toggle('fs-on', this.isFullscreen);
+  }
+
+  // ---------- Exit ----------
   async exitToHome() {
-    if (this.pauseEl) this.pauseEl.remove();
-    this.pauseEl = null;
+    this.closeModal();
     if (document.fullscreenElement) {
       try { await document.exitFullscreen(); } catch {}
     }
@@ -419,7 +450,7 @@ export class Game {
     requestAnimationFrame(() => this.animate());
     const dt = Math.min(this.clock.getDelta(), 0.1);
 
-    if (!this.paused) {
+    if (this.modal === null) {
       this.controls.update(dt);
       if (this.playerSync) this.playerSync.update(dt);
       if (this.world) this.world.updateAnimals(dt);
@@ -434,7 +465,7 @@ export class Game {
     this.unsubs.length = 0;
     window.removeEventListener('resize', this.onResize);
     document.removeEventListener('fullscreenchange', this.onFsChange);
-    if (this.inventoryUI) { this.inventoryUI.hide(); this.inventoryUI = null; }
+    this.closeModal();
     this.playerSync?.destroy();
     this.playerSync = null;
     this.controls?.disable();
