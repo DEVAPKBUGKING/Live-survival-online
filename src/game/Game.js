@@ -8,11 +8,12 @@ import { InventoryUI } from '../ui/InventoryUI.js';
 import { LocationUI } from '../ui/LocationUI.js';
 import { UIManager } from '../ui/UIManager.js';
 
-import { CityCucum } from '../data/city/CityCucum.js';
-
 export class Game {
-  constructor(container) {
+  constructor(container, profile) {
     this.container = container;
+    this.profile = profile; // Data dari Supabase (uang, ktp, admin)
+    this.isGodMode = false;
+
     this.container.style.position = 'absolute';
     this.container.style.inset = '0';
     this.container.style.zIndex = '0';
@@ -27,6 +28,10 @@ export class Game {
     this.inventory = null;
     this.locationUI = null;
     this.uiManager = null;
+
+    // Variabel Minimap
+    this.minimapCanvas = null;
+    this.minimapCtx = null;
 
     this.modal = null;
     this.inventoryUI = null;
@@ -55,7 +60,7 @@ export class Game {
   async start(onProgress) {
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(0x9dc8e8);
-    this.renderDistance = 100;
+    this.renderDistance = 150;
     this.scene.fog = new THREE.Fog(0x9dc8e8, this.renderDistance * 0.4, this.renderDistance);
 
     this.camera = new THREE.PerspectiveCamera(72, window.innerWidth / window.innerHeight, 0.1, 1000);
@@ -73,7 +78,7 @@ export class Game {
     if (onProgress) onProgress(0.1, 'Menyiapkan renderer');
     await new Promise(r => setTimeout(r, 0));
 
-    this.world = new World(this.scene, this.collision, CityCucum);
+    this.world = new World(this.scene, this.collision, null);
     await this.world.build((p, label) => {
       if (onProgress) onProgress(0.1 + p * 0.7, label);
     });
@@ -86,16 +91,34 @@ export class Game {
     this.inventory.add('water', 3);
 
     this.locationUI = new LocationUI(this.container);
-    this.uiManager = new UIManager(this.container);
+    this.uiManager = new UIManager(this.container, this.profile);
 
     if (onProgress) onProgress(0.9, 'Menyiapkan UI');
     await new Promise(r => setTimeout(r, 0));
 
     this.createHUD();
+    this.createMinimap();
 
     if (window.__rooms && window.__rooms.currentRoom) {
       this.playerSync = new PlayerSync(this.scene, this.camera, window.__rooms);
-      // ... (Logika multiplayer tetap sama)
+      try {
+        const existing = await window.__rooms.fetchPlayers();
+        for (const p of existing) {
+          if (p.client_id !== window.__rooms.currentPlayer.client_id) {
+            this.knownPlayers.add(p.client_id);
+          }
+        }
+      } catch {}
+
+      this.unsubs.push(window.__rooms.on('players_changed_db', (payload) => {
+        if (payload.eventType === 'INSERT') {
+          const p = payload.new;
+          if (p.client_id === window.__rooms.currentPlayer.client_id) return;
+          if (this.knownPlayers.has(p.client_id)) return;
+          this.knownPlayers.add(p.client_id);
+          this.showToast(`${p.name} telah join`);
+        }
+      }));
     }
 
     this.onResize = () => this.handleResize();
@@ -107,6 +130,57 @@ export class Game {
 
     this.running = true;
     this.animate();
+  }
+
+  createMinimap() {
+    this.minimapCanvas = document.createElement('canvas');
+    this.minimapCanvas.width = 160;
+    this.minimapCanvas.height = 160;
+    this.minimapCanvas.style.cssText = `
+      position: fixed; top: 16px; left: 16px; z-index: 999999;
+      background: rgba(10, 10, 20, 0.7); border: 2px solid #6ee7b7;
+      border-radius: 10px; pointer-events: none;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.8);
+    `;
+    document.body.appendChild(this.minimapCanvas);
+    this.minimapCtx = this.minimapCanvas.getContext('2d');
+  }
+
+  drawMinimap() {
+    if (!this.minimapCtx) return;
+    const ctx = this.minimapCtx;
+    const w = 160, h = 160;
+    const cx = w / 2, cy = h / 2;
+    const scale = 0.1; 
+
+    ctx.clearRect(0, 0, w, h);
+    ctx.fillStyle = '#2a4a2a';
+    ctx.fillRect(0, 0, w, h);
+
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(-this.controls.yaw);
+
+    // Jalan
+    ctx.fillStyle = '#555';
+    ctx.fillRect(-10 * scale, -300 * scale, 20 * scale, 600 * scale);
+
+    // Titik Pemain (Kuning)
+    ctx.beginPath();
+    ctx.arc(0, 0, 6, 0, Math.PI * 2);
+    ctx.fillStyle = '#fbbf24';
+    ctx.fill();
+
+    // Arah Pandang (Putih)
+    ctx.beginPath();
+    ctx.moveTo(0, -10);
+    ctx.lineTo(-6, 6);
+    ctx.lineTo(6, 6);
+    ctx.closePath();
+    ctx.fillStyle = '#fff';
+    ctx.fill();
+
+    ctx.restore();
   }
 
   createHUD() {
@@ -154,14 +228,38 @@ export class Game {
       <button id="btn-fullscreen" style="${btnStyle}">⛶</button>
       <button id="btn-settings" style="${btnStyle}">⚙</button>
     `;
-    document.body.appendChild(this.buttonsEl);
+    
+    // FITUR ADMIN (GOD MODE)
+    if (this.profile && this.profile.is_admin) {
+      const adminBtn = document.createElement('button');
+      adminBtn.style.cssText = btnStyle + "background: rgba(220, 38, 38, 0.8); border-color: #ef4444;";
+      adminBtn.textContent = '👑';
+      adminBtn.addEventListener('click', (e) => { e.stopPropagation(); this.toggleGodMode(); });
+      this.buttonsEl.appendChild(adminBtn);
+    }
 
+    document.body.appendChild(this.buttonsEl);
     this.setupTouchControls();
 
     this.buttonsEl.querySelector('#btn-inventory').addEventListener('click', (e) => { e.stopPropagation(); this.openInventory(); });
     this.buttonsEl.querySelector('#btn-license').addEventListener('click', (e) => { e.stopPropagation(); this.uiManager.showLicense(); });
     this.buttonsEl.querySelector('#btn-fullscreen').addEventListener('click', (e) => { e.stopPropagation(); this.toggleFullscreen(); });
     this.buttonsEl.querySelector('#btn-settings').addEventListener('click', (e) => { e.stopPropagation(); this.openPauseMenu(); });
+  }
+
+  toggleGodMode() {
+    this.isGodMode = !this.isGodMode;
+    if (this.isGodMode) {
+      this.showToast("GOD MODE ON");
+      this.controls.speed = 20;
+      this.controls.playerRadius = 0;
+      this.camera.position.y = 15;
+    } else {
+      this.showToast("GOD MODE OFF");
+      this.controls.speed = 4;
+      this.controls.playerRadius = 0.35;
+      this.camera.position.y = 1.6;
+    }
   }
 
   setupTouchControls() {
@@ -237,11 +335,13 @@ export class Game {
     let nearest = null;
     let minDist = Infinity;
 
-    for (const obj of this.world.city.interactables) {
-      const dist = this.camera.position.distanceTo(obj.position);
-      if (dist < obj.radius && dist < minDist) {
-        minDist = dist;
-        nearest = obj;
+    if (this.world.city.interactables) {
+      for (const obj of this.world.city.interactables) {
+        const dist = this.camera.position.distanceTo(obj.position);
+        if (dist < obj.radius && dist < minDist) {
+          minDist = dist;
+          nearest = obj;
+        }
       }
     }
 
@@ -263,11 +363,6 @@ export class Game {
   }
 
   openTravelMenu(type) {
-    if (!this.uiManager.hasLicense) {
-      this.showToast("Kamu tidak punya Lisensi (KTP) untuk masuk!");
-      return;
-    }
-
     if (!this.openModal('travel')) return;
     this.pauseEl = document.createElement('div');
     this.pauseEl.id = 'pause-menu';
@@ -358,7 +453,7 @@ export class Game {
         </label>
 
         <button class="pause-btn primary" data-action="resume" style="padding: 14px 20px; border-radius: 10px; border: 1px solid #3b82f6; background: linear-gradient(135deg, #3b82f6, #2563eb); color: #fff; font-size: 15px; font-weight: 600; cursor: pointer;">RESUME</button>
-        <button class="pause-btn danger" data-action="exit" style="padding: 14px 20px; border-radius: 10px; border: 1px solid #b03030; background: rgba(180,40,40,0.6); color: #e8e8f0; font-size: 15px; font-weight: 600; cursor: pointer;">EXIT TO HOME</button>
+        <button class="pause-btn danger" data-action="exit" style="padding: 14px 20px; border-radius: 10px; border: 1px solid #b03030; background: rgba(180,40,40,0.6); color: #e8e8f0; font-size: 15px; font-weight: 600; cursor: pointer;">KELUAR KE MENU</button>
       </div>
     `;
     document.body.appendChild(this.pauseEl);
@@ -459,8 +554,8 @@ export class Game {
     if (this.modal === null) {
       this.controls.update(dt);
       if (this.playerSync) this.playerSync.update(dt);
-      if (this.world) this.world.updateAnimals(dt);
       this.checkInteractables();
+      this.drawMinimap();
     }
     this.renderer.render(this.scene, this.camera);
   }
@@ -478,6 +573,7 @@ export class Game {
     if (this.joyBaseEl?.parentNode) this.joyBaseEl.parentNode.removeChild(this.joyBaseEl);
     if (this.buttonsEl?.parentNode) this.buttonsEl.parentNode.removeChild(this.buttonsEl);
     if (this.interactBtn?.parentNode) this.interactBtn.parentNode.removeChild(this.interactBtn);
+    if (this.minimapCanvas?.parentNode) this.minimapCanvas.parentNode.removeChild(this.minimapCanvas);
     this.container.innerHTML = '';
   }
 }
