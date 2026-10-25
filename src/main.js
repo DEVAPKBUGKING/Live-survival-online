@@ -4,19 +4,39 @@ import { MainMenu } from './ui/MainMenu.js';
 import { CreateRoom } from './ui/CreateRoom.js';
 import { JoinRoom } from './ui/JoinRoom.js';
 import { Lobby } from './ui/Lobby.js';
+import { HistoryRooms } from './ui/HistoryRooms.js';
 import { Rooms } from './multiplayer/Rooms.js';
 
 const app = document.getElementById('app');
 const rooms = new Rooms();
+let currentGame = null;
 
-// ---------- Routing ----------
 const menu = new MainMenu(app, {
-  onPlay: () => alert('Gunakan CREATE ROOM atau JOIN ROOM untuk mulai multiplayer.'),
+  onPlay: () => showHistory(),
   onCreate: () => showCreateRoom(),
   onJoin: () => showJoinRoom(),
   onSettings: () => alert('Settings global akan ditambahkan nanti.')
 });
 menu.show();
+
+function showHistory() {
+  menu.hide();
+  const history = new HistoryRooms(app,
+    async (code) => {
+      const name = localStorage.getItem('lso_player_name') || 'Player';
+      try {
+        await rooms.joinRoom({ code, name });
+        history.hide();
+        showLobby();
+      } catch (e) {
+        alert(e.message);
+        menu.show();
+      }
+    },
+    () => menu.show()
+  );
+  history.show();
+}
 
 function showCreateRoom() {
   menu.hide();
@@ -26,7 +46,7 @@ function showCreateRoom() {
       screen.hide();
       showLobby();
     },
-    () => { menu.show(); }
+    () => menu.show()
   );
   screen.show();
 }
@@ -39,7 +59,7 @@ function showJoinRoom() {
       screen.hide();
       showLobby();
     },
-    () => { menu.show(); }
+    () => menu.show()
   );
   screen.show();
 }
@@ -50,7 +70,7 @@ function showLobby() {
       lobby.hide();
       await startGame(payload);
     },
-    onLeave: () => { menu.show(); }
+    onLeave: () => menu.show()
   });
   lobby.show();
 }
@@ -59,24 +79,22 @@ async function startGame(payload) {
   showLoading();
   await new Promise(r => setTimeout(r, 30));
 
-  const game = new Game(app);
-  window.__game = game;
   window.__rooms = rooms;
+  currentGame = new Game(app);
+  window.__game = currentGame;
 
   try {
-    await game.start((p, label) => updateLoading(p, label));
+    await currentGame.start((p, label) => updateLoading(p, label));
     await new Promise(r => setTimeout(r, 250));
     hideLoading();
-    console.log('[Tahap 2] Game dimulai. Rooms context:', rooms.currentRoom?.code);
   } catch (err) {
     console.error(err);
     updateLoading(1, 'Error: ' + err.message);
   }
 }
 
-// ---------- Loading ----------
+// Loading
 let loadingEl = null, loadingBar = null, loadingLabel = null;
-
 function showLoading() {
   loadingEl = document.createElement('div');
   loadingEl.id = 'loading-screen';
@@ -91,12 +109,10 @@ function showLoading() {
   loadingBar = loadingEl.querySelector('.loading-bar-fill');
   loadingLabel = loadingEl.querySelector('.loading-label');
 }
-
 function updateLoading(p, label) {
   if (loadingBar) loadingBar.style.width = Math.round(p * 100) + '%';
   if (loadingLabel && label) loadingLabel.textContent = label;
 }
-
 function hideLoading() {
   if (!loadingEl) return;
   loadingEl.classList.add('fade-out');
