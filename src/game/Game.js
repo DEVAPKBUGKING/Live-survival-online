@@ -11,51 +11,72 @@ export class Game {
     this.world = null;
     this.controls = null;
     this.running = false;
+    this.paused = false;
     this.clock = new THREE.Clock();
     this.hudEl = null;
+    this.pauseEl = null;
     this.joyValue = { x: 0, y: 0 };
+    this.isFullscreen = false;
   }
 
   start() {
+    // ---- Scene ----
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(0x87ceeb);
-    this.scene.fog = new THREE.Fog(0x87ceeb, 30, 80);
+    this.scene.background = new THREE.Color(0x9dc8e8);
+    this.scene.fog = new THREE.Fog(0x9dc8e8, 40, 95);
 
+    // ---- Camera (first-person) ----
     this.camera = new THREE.PerspectiveCamera(
-      70, window.innerWidth / window.innerHeight, 0.1, 200
+      72, window.innerWidth / window.innerHeight, 0.1, 200
     );
     this.camera.position.set(0, 1.6, 0);
     this.camera.rotation.order = 'YXZ';
 
-    this.renderer = new THREE.WebGLRenderer({ antialias: false });
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+    // ---- Renderer ----
+    this.renderer = new THREE.WebGLRenderer({
+      antialias: true,
+      powerPreference: 'high-performance'
+    });
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.setSize(window.innerWidth, window.innerHeight);
-    this.renderer.shadowMap.enabled = false;
+    this.renderer.shadowMap.enabled = true;
+    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    this.renderer.toneMappingExposure = 1.05;
     this.container.appendChild(this.renderer.domElement);
 
-    const ambient = new THREE.AmbientLight(0xffffff, 0.6);
-    this.scene.add(ambient);
-
-    const sun = new THREE.DirectionalLight(0xffffff, 0.8);
-    sun.position.set(20, 40, 10);
-    this.scene.add(sun);
-
+    // ---- World ----
     this.world = new World(this.scene);
     this.world.build();
 
+    // ---- Controls ----
     this.controls = new Controls(this.camera, this.renderer.domElement);
     this.controls.enable();
     this.controls.setJoystick(this.joyValue);
 
+    // ---- HUD ----
     this.createHUD();
 
+    // ---- Resize ----
     this.onResize = () => this.handleResize();
     window.addEventListener('resize', this.onResize);
 
+    // ---- Fullscreen change listener ----
+    this.onFsChange = () => {
+      this.isFullscreen = !!document.fullscreenElement;
+      this.updateFullscreenBtn();
+    };
+    document.addEventListener('fullscreenchange', this.onFsChange);
+
+    // ---- Loop ----
     this.running = true;
     this.animate();
   }
 
+  // ============================================================
+  // HUD
+  // ============================================================
   createHUD() {
     this.hudEl = document.createElement('div');
     this.hudEl.id = 'game-hud';
@@ -65,10 +86,14 @@ export class Game {
       <div id="joystick-zone"></div>
       <div id="joystick-base"><div id="joystick-knob"></div></div>
       <div id="look-zone"></div>
-      <button id="back-btn">✕</button>
+      <div id="hud-buttons">
+        <button id="btn-fullscreen" title="Fullscreen">⛶</button>
+        <button id="btn-settings" title="Settings">⚙</button>
+      </div>
     `;
     this.container.appendChild(this.hudEl);
 
+    // ---- Joystick ----
     const zone = this.hudEl.querySelector('#joystick-zone');
     const base = this.hudEl.querySelector('#joystick-base');
     const knob = this.hudEl.querySelector('#joystick-knob');
@@ -78,7 +103,7 @@ export class Game {
     const joyRadius = 50;
 
     const updateKnob = (dx, dy) => {
-      const dist = Math.sqrt(dx * dx + dy * dy);
+      const dist = Math.hypot(dx, dy);
       const clamped = Math.min(dist, joyRadius);
       const angle = Math.atan2(dy, dx);
       const kx = Math.cos(angle) * clamped;
@@ -119,6 +144,7 @@ export class Game {
     zone.addEventListener('touchend', endJoy);
     zone.addEventListener('touchcancel', endJoy);
 
+    // ---- Look zone ----
     const lookZone = this.hudEl.querySelector('#look-zone');
     let lookTouchId = null;
     let lastLook = { x: 0, y: 0 };
@@ -146,12 +172,136 @@ export class Game {
     lookZone.addEventListener('touchend', endLook);
     lookZone.addEventListener('touchcancel', endLook);
 
-    this.hudEl.querySelector('#back-btn').addEventListener('click', () => {
-      this.destroy();
-      location.reload();
+    // ---- Buttons ----
+    this.hudEl.querySelector('#btn-fullscreen').addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.toggleFullscreen();
+    });
+
+    this.hudEl.querySelector('#btn-settings').addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.openPauseMenu();
     });
   }
 
+  // ============================================================
+  // Fullscreen + landscape lock
+  // ============================================================
+  async toggleFullscreen() {
+    try {
+      if (!document.fullscreenElement) {
+        await document.documentElement.requestFullscreen({ navigationUI: 'hide' });
+
+        // Coba kunci landscape — didukung Chrome Android
+        if (screen.orientation && screen.orientation.lock) {
+          try {
+            await screen.orientation.lock('landscape');
+          } catch (err) {
+            // Sebagian browser menolak tanpa user gesture tambahan; abaikan
+            console.warn('Orientation lock failed:', err.message);
+          }
+        }
+      } else {
+        if (screen.orientation && screen.orientation.unlock) {
+          try { screen.orientation.unlock(); } catch {}
+        }
+        await document.exitFullscreen();
+      }
+    } catch (err) {
+      console.warn('Fullscreen failed:', err.message);
+    }
+  }
+
+  updateFullscreenBtn() {
+    const btn = this.hudEl?.querySelector('#btn-fullscreen');
+    if (btn) btn.textContent = this.isFullscreen ? '⛶' : '⛶';
+    // Ikon sama — beda warna lewat CSS class
+    if (btn) btn.classList.toggle('fs-on', this.isFullscreen);
+  }
+
+  // ============================================================
+  // Pause menu
+  // ============================================================
+  openPauseMenu() {
+    if (this.paused) return;
+    this.paused = true;
+    this.joyValue.x = 0;
+    this.joyValue.y = 0;
+
+    this.pauseEl = document.createElement('div');
+    this.pauseEl.id = 'pause-menu';
+    this.pauseEl.innerHTML = `
+      <div class="pause-panel">
+        <h2>PAUSED</h2>
+        <button class="pause-btn primary" data-action="resume">RESUME</button>
+        <button class="pause-btn" data-action="settings">SETTINGS</button>
+        <button class="pause-btn danger" data-action="exit">EXIT TO MENU</button>
+      </div>
+    `;
+    this.container.appendChild(this.pauseEl);
+
+    this.pauseEl.querySelectorAll('.pause-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const action = btn.dataset.action;
+        if (action === 'resume') this.closePauseMenu();
+        else if (action === 'settings') this.openSettings();
+        else if (action === 'exit') this.exitToMenu();
+      });
+    });
+  }
+
+  closePauseMenu() {
+    if (this.pauseEl) {
+      this.pauseEl.remove();
+      this.pauseEl = null;
+    }
+    this.paused = false;
+  }
+
+  openSettings() {
+    // Sub-panel di dalam pause menu — sederhana, hindari nested modal
+    const panel = this.pauseEl?.querySelector('.pause-panel');
+    if (!panel) return;
+    panel.innerHTML = `
+      <h2>SETTINGS</h2>
+      <label class="pause-label">
+        Look sensitivity
+        <input type="range" min="0.5" max="2.0" step="0.1" value="1.0" id="set-sens" />
+      </label>
+      <label class="pause-label">
+        Move speed
+        <input type="range" min="2" max="7" step="0.5" value="4" id="set-speed" />
+      </label>
+      <button class="pause-btn primary" data-action="back">BACK</button>
+    `;
+    panel.querySelector('#set-sens').addEventListener('input', (e) => {
+      const v = parseFloat(e.target.value);
+      this.controls.lookSensitivity = 0.0028 * v;
+    });
+    panel.querySelector('#set-speed').addEventListener('input', (e) => {
+      this.controls.speed = parseFloat(e.target.value);
+    });
+    panel.querySelector('[data-action="back"]').addEventListener('click', () => {
+      this.closePauseMenu();
+      this.openPauseMenu();
+    });
+  }
+
+  async exitToMenu() {
+    this.closePauseMenu();
+    if (document.fullscreenElement) {
+      try { await document.exitFullscreen(); } catch {}
+    }
+    if (screen.orientation && screen.orientation.unlock) {
+      try { screen.orientation.unlock(); } catch {}
+    }
+    this.destroy();
+    location.reload();
+  }
+
+  // ============================================================
+  // Resize + loop
+  // ============================================================
   handleResize() {
     this.camera.aspect = window.innerWidth / window.innerHeight;
     this.camera.updateProjectionMatrix();
@@ -161,20 +311,27 @@ export class Game {
   animate() {
     if (!this.running) return;
     requestAnimationFrame(() => this.animate());
+
     const dt = Math.min(this.clock.getDelta(), 0.1);
-    this.controls.update(dt);
+
+    if (!this.paused) {
+      this.controls.update(dt);
+    }
+
     this.renderer.render(this.scene, this.camera);
   }
 
   destroy() {
     this.running = false;
     window.removeEventListener('resize', this.onResize);
+    document.removeEventListener('fullscreenchange', this.onFsChange);
     this.controls?.disable();
     this.renderer?.dispose();
     if (this.renderer?.domElement?.parentNode) {
       this.renderer.domElement.parentNode.removeChild(this.renderer.domElement);
     }
     if (this.hudEl?.parentNode) this.hudEl.parentNode.removeChild(this.hudEl);
+    if (this.pauseEl?.parentNode) this.pauseEl.parentNode.removeChild(this.pauseEl);
     this.container.innerHTML = '';
   }
 }
