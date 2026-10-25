@@ -31,25 +31,36 @@ export class World {
   }
 
   buildLighting() {
-    const hemi = new THREE.HemisphereLight(0xaaccff, 0x4a7c3f, 1.0);
+    // Ambient Light untuk dasar yang terang
+    const hemi = new THREE.HemisphereLight(0xaaccff, 0x4a7c3f, 1.2);
     this.scene.add(hemi);
 
-    const sun = new THREE.DirectionalLight(0xfff2d5, 1.1);
+    // Sunlight (PCF Soft Shadow)
+    const sun = new THREE.DirectionalLight(0xfff2d5, 1.5);
     sun.position.set(30, 50, 20);
     sun.castShadow = true;
-    sun.shadow.mapSize.set(512, 512);
+    
+    // Resolusi bayangan lebih tinggi dikit biar ga kaku
+    sun.shadow.mapSize.set(1024, 1024); 
     sun.shadow.camera.left = -45;
     sun.shadow.camera.right = 45;
     sun.shadow.camera.top = 45;
     sun.shadow.camera.bottom = -45;
     sun.shadow.camera.near = 1;
     sun.shadow.camera.far = 120;
-    sun.shadow.bias = -0.001;
+    sun.shadow.bias = -0.0005; // Ngurangin bayangan bergaris (acne)
+    
     this.scene.add(sun);
 
-    const fill = new THREE.DirectionalLight(0x88aaff, 0.25);
+    // Fill light biar bagian gelap ga terlalu hitam
+    const fill = new THREE.DirectionalLight(0x88aaff, 0.4);
     fill.position.set(-20, 10, -10);
     this.scene.add(fill);
+    
+    // Lampu di dalam rumah biar ga gelap gulita
+    const roomLight = new THREE.PointLight(0xffeedd, 1.5, 20);
+    roomLight.position.set(0, 2.5, 0);
+    this.scene.add(roomLight);
   }
 
   buildGround() {
@@ -106,10 +117,12 @@ export class World {
     const header = this.addBox(0, wallHeight - 0.3, 5, 1.2, 0.6, wallThick, wallMat);
     header.castShadow = true;
 
+    // ROOF FIX: Dibikin lebih lebar biar nutupin dinding
     const roofMat = new THREE.MeshLambertMaterial({ color: 0x8a3a1a });
-    const roof = new THREE.Mesh(new THREE.BoxGeometry(10.8, 0.25, 10.8), roofMat);
+    const roof = new THREE.Mesh(new THREE.BoxGeometry(10.8, 0.3, 10.8), roofMat);
     roof.position.set(0, wallHeight + 0.15, 0);
     roof.castShadow = true;
+    roof.receiveShadow = true;
     this.scene.add(roof);
 
     const bedFrame = new THREE.MeshLambertMaterial({ color: 0x6b3e2b });
@@ -140,7 +153,6 @@ export class World {
     this.collision.addBox(-4.9, 0, 2.65, -3.1, 0.9, 3.35);
   }
 
-  // Pohon lebih hidup: trunk + 3 lapis cone, random rotasi/scale
   buildTrees() {
     const trunkMat = new THREE.MeshLambertMaterial({ color: 0x5a3e2b });
     const leafMats = [
@@ -157,7 +169,7 @@ export class World {
     for (const [x, z] of treePositions) {
       const scale = 0.8 + Math.random() * 0.6;
       const trunk = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.2 * scale, 0.28 * scale, 2.2 * scale, 7),
+        new THREE.CylinderGeometry(0.2 * scale, 0.28 * scale, 2.2 * scale, 8),
         trunkMat
       );
       trunk.position.set(x, 1.1 * scale, z);
@@ -165,13 +177,12 @@ export class World {
       this.scene.add(trunk);
       this.collision.addBox(x - 0.3, 0, z - 0.3, x + 0.3, 2.2 * scale, z + 0.3);
 
-      // 3 lapis cone untuk crown
       const leafMat = leafMats[Math.floor(Math.random() * leafMats.length)];
       const layers = 3;
       for (let i = 0; i < layers; i++) {
         const r = (1.5 - i * 0.35) * scale;
         const h = (1.6 - i * 0.2) * scale;
-        const cone = new THREE.Mesh(new THREE.ConeGeometry(r, h, 7), leafMat);
+        const cone = new THREE.Mesh(new THREE.ConeGeometry(r, h, 8), leafMat);
         cone.position.set(x, (2.6 + i * 0.9) * scale, z);
         cone.rotation.y = Math.random() * Math.PI;
         cone.castShadow = true;
@@ -180,132 +191,25 @@ export class World {
     }
   }
 
-  // Rumput (billboard plane) + batu (icosahedron)
   buildNature() {
-    // Rumput — 80 patch kecil di sekitar ground
-    const grassMat = new THREE.MeshLambertMaterial({
-      color: 0x6aaa4a, side: THREE.DoubleSide
-    });
+    const grassMat = new THREE.MeshLambertMaterial({ color: 0x6aaa4a, side: THREE.DoubleSide });
     for (let i = 0; i < 80; i++) {
       const angle = Math.random() * Math.PI * 2;
       const dist = 8 + Math.random() * 28;
       const x = Math.cos(angle) * dist;
       const z = Math.sin(angle) * dist;
-
-      // Skip kalau di dalam rumah
       if (Math.abs(x) < 5.5 && Math.abs(z) < 5.5) continue;
-
       const blade = new THREE.Mesh(new THREE.PlaneGeometry(0.15, 0.4), grassMat);
       blade.position.set(x, 0.2, z);
       blade.rotation.y = Math.random() * Math.PI;
       this.scene.add(blade);
     }
 
-    // Batu — 15 batu kecil
-    const rockMat = new THREE.MeshLambertMaterial({ color: 0x7a7a7a, flatShading: true });
+    const rockMat = new THREE.MeshLambertMaterial({ color: 0x7a7a7a });
     for (let i = 0; i < 15; i++) {
       const angle = Math.random() * Math.PI * 2;
       const dist = 10 + Math.random() * 25;
       const x = Math.cos(angle) * dist;
       const z = Math.sin(angle) * dist;
-
       if (Math.abs(x) < 5.5 && Math.abs(z) < 5.5) continue;
-
-      const s = 0.2 + Math.random() * 0.3;
-      const rock = new THREE.Mesh(new THREE.IcosahedronGeometry(s, 0), rockMat);
-      rock.position.set(x, s * 0.5, z);
-      rock.rotation.set(Math.random(), Math.random(), Math.random());
-      rock.castShadow = true;
-      this.scene.add(rock);
-      this.collision.addBox(x - s, 0, z - s, x + s, s * 2, z + s);
-    }
-  }
-
-  // Hewan sederhana: kubus badan + kepala, bergerak pelan
-  buildAnimals() {
-    const bodyMat = new THREE.MeshLambertMaterial({ color: 0xc8a070 });
-    const headMat = new THREE.MeshLambertMaterial({ color: 0xe0c090 });
-
-    for (let i = 0; i < 4; i++) {
-      const group = new THREE.Group();
-
-      const body = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.35, 0.8), bodyMat);
-      body.position.y = 0.4;
-      body.castShadow = true;
-      group.add(body);
-
-      const head = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.3, 0.3), headMat);
-      head.position.set(0, 0.6, 0.5);
-      head.castShadow = true;
-      group.add(head);
-
-      const legMat = new THREE.MeshLambertMaterial({ color: 0x8a6a4a });
-      for (const [lx, lz] of [[-0.18, -0.25], [0.18, -0.25], [-0.18, 0.25], [0.18, 0.25]]) {
-        const leg = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.3, 0.1), legMat);
-        leg.position.set(lx, 0.15, lz);
-        group.add(leg);
-      }
-
-      const startX = (Math.random() - 0.5) * 30;
-      const startZ = (Math.random() - 0.5) * 30;
-      group.position.set(startX, 0, startZ);
-      this.scene.add(group);
-
-      this.animals.push({
-        group,
-        angle: Math.random() * Math.PI * 2,
-        speed: 0.5 + Math.random() * 0.5,
-        timer: 2 + Math.random() * 3
-      });
-    }
-  }
-
-  updateAnimals(dt) {
-    for (const a of this.animals) {
-      a.timer -= dt;
-      if (a.timer <= 0) {
-        a.angle += (Math.random() - 0.5) * 1.5;
-        a.timer = 2 + Math.random() * 3;
-      }
-      a.group.position.x += Math.cos(a.angle) * a.speed * dt;
-      a.group.position.z += Math.sin(a.angle) * a.speed * dt;
-      a.group.rotation.y = -a.angle + Math.PI / 2;
-
-      // Clamp
-      if (Math.abs(a.group.position.x) > 35) a.angle = Math.PI - a.angle;
-      if (Math.abs(a.group.position.z) > 35) a.angle = -a.angle;
-    }
-  }
-
-  buildBoundary() {
-    const boundMat = new THREE.MeshLambertMaterial({
-      color: 0x2a2a3a, transparent: true, opacity: 0.12
-    });
-    const h = 3;
-    this.addBox(0, h / 2, -38, 78, h, 0.3, boundMat);
-    this.addBox(0, h / 2, 38, 78, h, 0.3, boundMat);
-    this.addBox(-38, h / 2, 0, 0.3, h, 78, boundMat);
-    this.addBox(38, h / 2, 0, 0.3, h, 78, boundMat);
-
-    this.collision.addBox(-39, 0, -39, 39, h, -37.7);
-    this.collision.addBox(-39, 0, 37.7, 39, h, 39);
-    this.collision.addBox(-39, 0, -39, -37.7, h, 39);
-    this.collision.addBox(37.7, 0, -39, 39, h, 39);
-  }
-
-  addWall(x, y, z, w, h, d, material) {
-    const mesh = this.addBox(x, y, z, w, h, d, material);
-    mesh.castShadow = true;
-    mesh.receiveShadow = true;
-    this.collision.addBox(x - w / 2, 0, z - d / 2, x + w / 2, h, z + d / 2);
-    return mesh;
-  }
-
-  addBox(x, y, z, w, h, d, material) {
-    const geo = new THREE.BoxGeometry(w, h, d);
-    const mesh = new THREE.Mesh(geo, material);
-    mesh.position.set(x, y, z);
-    this.scene.add(mesh);
-    return mesh;
-  }
-}
+      const s = 0.2
