@@ -28,6 +28,7 @@ export class Game {
     this.buttonsEl = null;
     this.joyValue = { x: 0, y: 0 };
     this.isFullscreen = false;
+    this.isForcedLandscape = false; // Fallback kalau browser nolak lock
     this.unsubs = [];
 
     this.joyTouchId = null;
@@ -43,7 +44,6 @@ export class Game {
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(0x9dc8e8);
     
-    // Setup awal fog (jarak pandang)
     this.renderDistance = 100;
     this.scene.fog = new THREE.Fog(0x9dc8e8, this.renderDistance * 0.4, this.renderDistance);
 
@@ -57,7 +57,6 @@ export class Game {
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.25));
     this.renderer.setSize(window.innerWidth, window.innerHeight);
     
-    // Enteng tapi dapat bayangan
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.BasicShadowMap; 
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -107,6 +106,7 @@ export class Game {
 
     this.onResize = () => this.handleResize();
     window.addEventListener('resize', this.onResize);
+    window.addEventListener('orientationchange', this.onResize);
 
     this.renderer.render(this.scene, this.camera);
     if (onProgress) onProgress(1, 'Selesai');
@@ -126,7 +126,6 @@ export class Game {
     `;
     this.container.appendChild(this.hudEl);
 
-    // --- FIX JOYSTICK: Render ke Body, pakai visibility ---
     this.joyBaseEl = document.createElement('div');
     this.joyBaseEl.id = 'joystick-base';
     this.joyBaseEl.style.cssText = `
@@ -136,7 +135,7 @@ export class Game {
       transform: translate(-50%, -50%);
     `;
     this.joyBaseEl.innerHTML = `<div id="joystick-knob" style="position: absolute; width: 44px; height: 44px; border-radius: 50%; background: rgba(255,255,255,0.8); top: 50%; left: 50%; transform: translate(-50%, -50%); pointer-events: none;"></div>`;
-    document.body.appendChild(this.joyBaseEl); // Taruh di body langsung
+    document.body.appendChild(this.joyBaseEl);
 
     this.buttonsEl = document.createElement('div');
     this.buttonsEl.id = 'hud-buttons';
@@ -174,7 +173,6 @@ export class Game {
 
     document.addEventListener('touchstart', (e) => {
       if (this.modal !== null) return;
-
       for (const t of e.changedTouches) {
         if (t.clientX < window.innerWidth / 2 && this.joyTouchId === null) {
           this.joyTouchId = t.identifier;
@@ -225,7 +223,7 @@ export class Game {
     document.addEventListener('touchcancel', endTouch, { passive: true });
   }
 
-  openModal(kind) { /* Sama seperti sebelumnya */
+  openModal(kind) {
     if (this.modal === kind) return false;
     if (this.modal !== null) this.closeModal();
     this.modal = kind;
@@ -263,7 +261,7 @@ export class Game {
         
         <label style="display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: #9aa0b0;">
           Jarak Pandang (5 - 100)
-          <input type="range" min="5" max="100" step="5" value="50" id="set-dist" style="width: 100%; accent-color: #3b82f6;" />
+          <input type="range" min="5" max="100" step="5" value="${this.renderDistance}" id="set-dist" style="width: 100%; accent-color: #3b82f6;" />
         </label>
 
         <button class="pause-btn primary" data-action="resume" style="padding: 14px 20px; border-radius: 10px; border: 1px solid #3b82f6; background: linear-gradient(135deg, #3b82f6, #2563eb); color: #fff; font-size: 15px; font-weight: 600; cursor: pointer;">RESUME</button>
@@ -276,7 +274,7 @@ export class Game {
       const val = parseInt(e.target.value);
       this.renderDistance = val;
       this.scene.fog = new THREE.Fog(0x9dc8e8, val * 0.4, val);
-      this.camera.far = Math.max(250, val * 1.5); // Kamera bisa lihat jauh
+      this.camera.far = Math.max(250, val * 1.5);
       this.camera.updateProjectionMatrix();
     });
 
@@ -298,27 +296,84 @@ export class Game {
     setTimeout(() => { toast.style.opacity = '0'; toast.style.transition = 'opacity 0.4s'; setTimeout(() => toast.remove(), 400); }, 3000);
   }
 
+  // --- FIX FULLSCREEN & AUTO ROTATE ---
   async toggleFullscreen() {
     try {
       if (!document.fullscreenElement) {
         await document.documentElement.requestFullscreen({ navigationUI: 'hide' });
+        
+        // Tunggu 100ms agar browser siap transisi
+        setTimeout(() => {
+          if (screen.orientation && screen.orientation.lock) {
+            screen.orientation.lock('landscape').catch((err) => {
+              console.warn("Auto-rotate ditolak browser, pakai fallback CSS", err);
+              this.forceLandscapeCSS();
+            });
+          } else {
+            this.forceLandscapeCSS();
+          }
+        }, 100);
+
       } else {
+        if (screen.orientation && screen.orientation.unlock) {
+          screen.orientation.unlock();
+        }
+        this.removeForceLandscapeCSS();
         await document.exitFullscreen();
       }
-    } catch (err) {}
+    } catch (err) { console.warn('Fullscreen failed:', err.message); }
+  }
+
+  // Fallback CSS kalau browser kunci orientasi
+  forceLandscapeCSS() {
+    if (this.isForcedLandscape) return;
+    this.isForcedLandscape = true;
+    this.container.style.transform = 'rotate(90deg)';
+    this.container.style.transformOrigin = 'bottom left';
+    this.container.style.width = '100vh';
+    this.container.style.height = '100vw';
+    this.container.style.position = 'absolute';
+    this.container.style.top = '-100vw';
+    this.container.style.left = '0';
+    
+    // Paksa resize canvas
+    setTimeout(() => this.handleResize(), 100);
+  }
+
+  removeForceLandscapeCSS() {
+    if (!this.isForcedLandscape) return;
+    this.isForcedLandscape = false;
+    this.container.style.transform = '';
+    this.container.style.width = '100%';
+    this.container.style.height = '100%';
+    this.container.style.position = 'relative';
+    this.container.style.top = '0';
+    this.container.style.left = '0';
+    
+    setTimeout(() => this.handleResize(), 100);
   }
 
   async exitToHome() {
     this.closeModal();
+    this.removeForceLandscapeCSS();
     if (document.fullscreenElement) { try { await document.exitFullscreen(); } catch {} }
+    if (screen.orientation && screen.orientation.unlock) { try { screen.orientation.unlock(); } catch {} }
     this.destroy();
     location.reload();
   }
 
   handleResize() {
-    this.camera.aspect = window.innerWidth / window.innerHeight;
+    // Kalkulasi ukuran canvas berdasarkan orientasi saat ini
+    let w = window.innerWidth;
+    let h = window.innerHeight;
+    if (this.isForcedLandscape) {
+      w = window.innerHeight;
+      h = window.innerWidth;
+    }
+    
+    this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
-    this.renderer.setSize(window.innerWidth, window.innerHeight);
+    this.renderer.setSize(w, h);
   }
 
   animate() {
@@ -338,6 +393,7 @@ export class Game {
     this.running = false;
     for (const u of this.unsubs) u();
     window.removeEventListener('resize', this.onResize);
+    window.removeEventListener('orientationchange', this.onResize);
     this.closeModal();
     this.playerSync?.destroy();
     this.controls?.disable();
