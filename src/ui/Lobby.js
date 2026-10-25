@@ -6,7 +6,7 @@ export class Lobby {
     this.onLeave = onLeave;
     this.el = null;
     this.unsubs = [];
-    this.starting = false;
+    this.started = false;
   }
 
   async show() {
@@ -27,16 +27,13 @@ export class Lobby {
         </div>
         <div class="lobby-actions">
           <button class="secondary" id="lobby-leave">LEAVE</button>
-          <button class="primary" id="lobby-start" style="display:none">START GAME</button>
         </div>
-        <div class="lobby-status"></div>
+        <div class="lobby-status">Menghubungkan...</div>
       </div>
     `;
     this.container.appendChild(this.el);
 
     const room = this.rooms.currentRoom;
-    const player = this.rooms.currentPlayer;
-
     this.el.querySelector('.lobby-room-name').textContent = room.name;
     this.el.querySelector('.lobby-code').textContent = room.code;
 
@@ -57,39 +54,27 @@ export class Lobby {
       }
     });
 
-    if (player.is_host) {
-      const startBtn = this.el.querySelector('#lobby-start');
-      startBtn.style.display = 'block';
-      startBtn.addEventListener('click', async () => {
-        if (this.starting) return;
-        this.starting = true;
-        startBtn.textContent = 'STARTING...';
-        try {
-          await this.rooms.startGame();
-          // HOST: langsung masuk game tanpa menunggu broadcast balik.
-          // Broadcast tetap dikirim untuk pemain lain.
-          this.onStart({ startedAt: Date.now() });
-        } catch (e) {
-          alert(e.message);
-          this.starting = false;
-          startBtn.textContent = 'START GAME';
-        }
-      });
-    }
-
     await this.refresh();
 
     this.unsubs.push(this.rooms.on('players_changed', () => this.refresh()));
-    this.unsubs.push(this.rooms.on('start_game', (payload) => {
-      this.onStart(payload);
-    }));
     this.unsubs.push(this.rooms.on('connection', (status) => {
       const s = this.el?.querySelector('.lobby-status');
       if (s) s.textContent = 'Realtime: ' + status;
+      // Setelah channel connected, langsung masuk game
+      if (status === 'SUBSCRIBED') {
+        this.enterGame();
+      }
     }));
-    this.unsubs.push(this.rooms.on('room_changed', (room) => {
-      if (room && room.status === 'playing') this.onStart({ startedAt: room.started_at });
-    }));
+
+    // Cadangan: kalau event SUBSCRIBED tidak terpicu dalam 2 detik, paksa masuk
+    setTimeout(() => this.enterGame(), 2000);
+  }
+
+  enterGame() {
+    if (this.started) return;
+    this.started = true;
+    this.hide();
+    this.onStart({ startedAt: Date.now() });
   }
 
   async refresh() {
