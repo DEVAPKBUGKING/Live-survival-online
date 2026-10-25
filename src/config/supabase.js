@@ -1,8 +1,8 @@
 import { createClient } from '@supabase/supabase-js';
 
 // GANTI dua nilai ini dengan milikmu dari Supabase dashboard (Settings → API)
-const SUPABASE_URL = 'https://GANTI-PROJECT-URL.supabase.co';
-const SUPABASE_ANON_KEY = 'GANTI-ANON-KEY';
+const SUPABASE_URL = 'https://ujmnrrhvulzedezwjfmx.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_xuaJr_Ue2zXKVSJGVvYUYg_ewQLpdO4';
 
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   realtime: { params: { eventsPerSecond: 10 } }
