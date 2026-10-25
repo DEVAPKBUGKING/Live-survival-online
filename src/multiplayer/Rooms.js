@@ -31,7 +31,7 @@ export class Rooms {
       const code = generateRoomCode();
       const { data, error } = await supabase
         .from('rooms')
-        .insert({ code, name: roomName, host_id: clientId, max_players: maxPlayers, status: 'lobby' })
+        .insert({ code, name: roomName, host_id: clientId, max_players: maxPlayers, status: 'playing' })
         .select().single();
 
       if (!error) { room = data; break; }
@@ -63,7 +63,6 @@ export class Rooms {
     if (!rooms || rooms.length === 0) throw new Error('Room tidak ditemukan.');
     const room = rooms[0];
 
-    // Kalau status playing, izinkan join sebagai spectator/player baru
     if (room.status === 'ended') throw new Error('Room sudah berakhir.');
 
     const { count } = await supabase
@@ -87,6 +86,14 @@ export class Rooms {
       if (pErr) throw new Error('Gagal join: ' + pErr.message);
       player = p;
       isNewJoin = true;
+
+      // Kalau room sudah ada host lain dan statusnya sudah playing,
+      // pastikan tetap 'playing' — jangan reset.
+      if (room.status !== 'playing') {
+        await supabase.from('rooms')
+          .update({ status: 'playing', started_at: room.started_at || new Date().toISOString() })
+          .eq('id', room.id);
+      }
     }
 
     this.currentRoom = room;
@@ -94,7 +101,6 @@ export class Rooms {
     saveToHistory(room);
     await this.subscribeToRoom(room.id);
 
-    // Notifikasi ke pemain lain kalau ini join baru
     if (isNewJoin) {
       this.channel?.send({
         type: 'broadcast', event: 'player_joined',
@@ -118,8 +124,6 @@ export class Rooms {
       .on('postgres_changes',
         { event: 'UPDATE', schema: 'public', table: 'rooms', filter: `id=eq.${roomId}` },
         (payload) => this.emit('room_changed', payload.new))
-      .on('broadcast', { event: 'start_game' },
-        (payload) => this.emit('start_game', payload.payload))
       .on('broadcast', { event: 'pos' },
         (payload) => this.emit('pos', payload.payload))
       .on('broadcast', { event: 'bye' },
@@ -146,23 +150,6 @@ export class Rooms {
     return data || [];
   }
 
-  async startGame() {
-    if (!this.currentRoom || !this.currentPlayer?.is_host) {
-      throw new Error('Hanya host yang bisa start.');
-    }
-    const { error } = await supabase
-      .from('rooms')
-      .update({ status: 'playing', started_at: new Date().toISOString() })
-      .eq('id', this.currentRoom.id);
-    if (error) throw new Error('Gagal start: ' + error.message);
-
-    await this.channel.send({
-      type: 'broadcast', event: 'start_game',
-      payload: { startedAt: Date.now(), roomId: this.currentRoom.id }
-    });
-  }
-
-  // Leave tanpa menghapus room — room tetap ada untuk di-join lagi
   async leaveRoom() {
     if (!this.currentPlayer) return;
 
