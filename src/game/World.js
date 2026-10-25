@@ -11,7 +11,7 @@ export class World {
   }
 
   async build(onProgress) {
-    const steps = 5;
+    const steps = 4;
     let done = 0;
     const tick = async (label) => {
       done++;
@@ -23,12 +23,10 @@ export class World {
     await tick('Menyiapkan cahaya');
     this.buildGround();
     await tick('Membangun jalan');
-    this.buildHouse();
+    this.buildMainHouse();
     await tick('Membangun Main House');
     this.buildCityStructures();
-    await tick('Membangun gedung kota');
-    this.buildNature();
-    await tick('Menanam pohon & rumput');
+    await tick('Membangun pusat kota');
   }
 
   buildLighting() {
@@ -36,43 +34,38 @@ export class World {
     this.scene.add(hemi);
 
     const sun = new THREE.DirectionalLight(0xfff2d5, 1.2);
-    sun.position.set(30, 50, 20);
+    sun.position.set(50, 80, 30);
     sun.castShadow = true;
-    sun.shadow.mapSize.set(512, 512); 
-    sun.shadow.camera.left = -100;
-    sun.shadow.camera.right = 100;
-    sun.shadow.camera.top = 100;
-    sun.shadow.camera.bottom = -100;
-    sun.shadow.camera.far = 200;
+    sun.shadow.mapSize.set(1024, 1024); 
+    sun.shadow.camera.left = -150;
+    sun.shadow.camera.right = 150;
+    sun.shadow.camera.top = 150;
+    sun.shadow.camera.bottom = -150;
+    sun.shadow.camera.far = 300;
     sun.shadow.bias = -0.001; 
     this.scene.add(sun);
-
-    // Cahaya di dalam rumah
-    const roomLight = new THREE.PointLight(0xffeedd, 1.5, 20);
-    roomLight.position.set(0, 2.5, 0);
-    this.scene.add(roomLight);
   }
 
   buildGround() {
     const groundMat = new THREE.MeshLambertMaterial({ color: 0x5a8f4a });
-    const ground = new THREE.Mesh(new THREE.PlaneGeometry(500, 500), groundMat);
+    const ground = new THREE.Mesh(new THREE.PlaneGeometry(600, 600), groundMat);
     ground.rotation.x = -Math.PI / 2;
     ground.position.y = -0.1;
     ground.receiveShadow = true;
     this.scene.add(ground);
 
-    // Jalan Aspal
+    // Jalan Utama (Aspal)
     const roadMat = new THREE.MeshLambertMaterial({ color: 0x2a2a2a });
-    const road = new THREE.Mesh(new THREE.PlaneGeometry(12, 200), roadMat);
+    const road = new THREE.Mesh(new THREE.PlaneGeometry(16, 300), roadMat);
     road.rotation.x = -Math.PI / 2;
     road.position.set(0, 0.01, -50);
     road.receiveShadow = true;
     this.scene.add(road);
 
-    // Marka Jalan (Hanya di luar rumah)
+    // Marka Jalan
     const stripeMat = new THREE.MeshLambertMaterial({ color: 0xd4b040 });
-    for (let i = 0; i < 25; i++) {
-      const zPos = -100 + i * 8;
+    for (let i = 0; i < 40; i++) {
+      const zPos = -180 + i * 8;
       if (zPos > -6 && zPos < 6) continue; 
       const stripe = new THREE.Mesh(new THREE.PlaneGeometry(0.5, 3), stripeMat);
       stripe.rotation.x = -Math.PI / 2;
@@ -81,7 +74,7 @@ export class World {
     }
   }
 
-  buildHouse() {
+  buildMainHouse() {
     const floorMat = new THREE.MeshLambertMaterial({ color: 0xa07f5a });
     const floor = new THREE.Mesh(new THREE.PlaneGeometry(10, 10), floorMat);
     floor.rotation.x = -Math.PI / 2;
@@ -103,76 +96,25 @@ export class World {
     roof.position.set(0, h + 0.15, 0);
     roof.castShadow = true;
     this.scene.add(roof);
-
-    // Kasur
-    this.addBox(-3.5, 0.25, -3.5, 1.2, 0.5, 2, new THREE.MeshLambertMaterial({ color: 0x4a6fa5 }));
-    // Meja
-    this.addBox(3, 0.4, -3, 1.5, 0.08, 0.8, new THREE.MeshLambertMaterial({ color: 0x5a3e2b }));
   }
 
   buildCityStructures() {
-    this.city.createAirport(this.cityData.airport.x, this.cityData.airport.z);
-    this.city.createSubway(this.cityData.subway.x, this.cityData.subway.z);
-    
-    const colors = [0x8a8a8a, 0x6a7a8a, 0x7a6a6a, 0x9a9a8a];
-    for (let z = -80; z < -10; z += 20) {
-      this.city.createSkyscraper(-25, z, 15, 15, 20 + Math.random() * 20, colors[0]);
-      this.city.createSkyscraper(25, z, 15, 15, 15 + Math.random() * 25, colors[1]);
+    const data = this.cityData;
+
+    // 1. Bandara & Stasiun
+    this.city.createAirport(data.airport.x, data.airport.z);
+    this.city.createSubway(data.subway.x, data.subway.z);
+
+    // 2. Perumahan (Residential)
+    for (const house of data.residential) {
+      this.city.createHouse(house.x, house.z, house.width, house.depth, house.color);
+    }
+
+    // 3. Gedung Tinggi (Downtown)
+    for (const building of data.downtown) {
+      this.city.createSkyscraper(building.x, building.z, building.width, building.depth, building.height, building.color);
     }
   }
-
-  buildNature() {
-    const treePositions = [
-      [-12, -8], [14, -4], [-16, 6], [18, 10], [-8, 14],
-      [-20, -15], [22, -12], [-14, 18], [26, 2], [10, -20]
-    ];
-
-    for (const [x, z] of treePositions) {
-      this.addTree(x, z);
-    }
-
-    // Rumput 3D
-    const grassMat = new THREE.MeshLambertMaterial({ color: 0x4caf50, side: THREE.DoubleSide });
-    const grassGeo = new THREE.BufferGeometry();
-    const vertices = new Float32Array([
-      -0.1, 0, 0,   0.1, 0, 0,   0, 0.5, 0,
-      0, 0, -0.1,   0, 0, 0.1,   0, 0.5, 0
-    ]);
-    grassGeo.setAttribute('position', new THREE.BufferAttribute(vertices, 3));
-    grassGeo.computeVertexNormals();
-
-    for (let i = 0; i < 200; i++) {
-      const x = (Math.random() - 0.5) * 120;
-      const z = (Math.random() - 0.5) * 120;
-      if (Math.abs(x) < 8 || Math.abs(z) < 10) continue; 
-
-      const blade = new THREE.Mesh(grassGeo, grassMat);
-      blade.position.set(x, 0, z);
-      blade.rotation.y = Math.random() * Math.PI;
-      blade.scale.setScalar(0.5 + Math.random() * 0.8);
-      this.scene.add(blade);
-    }
-  }
-
-  addTree(x, z) {
-    const trunkMat = new THREE.MeshLambertMaterial({ color: 0x5a3e2b });
-    const leafMat = new THREE.MeshLambertMaterial({ color: 0x2d7a2d });
-    
-    const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.4, 3, 8), trunkMat);
-    trunk.position.set(x, 1.5, z);
-    trunk.castShadow = true;
-    this.scene.add(trunk);
-    this.collision.addBox(x - 0.4, 0, z - 0.4, x + 0.4, 3, z + 0.4);
-
-    for (let i = 0; i < 3; i++) {
-      const cone = new THREE.Mesh(new THREE.ConeGeometry(2 - i*0.5, 2, 8), leafMat);
-      cone.position.set(x, 3.5 + i*1.2, z);
-      cone.castShadow = true;
-      this.scene.add(cone);
-    }
-  }
-
-  updateAnimals(dt) { /* Kosong */ }
 
   addWall(x, y, z, w, h, d, material) {
     const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), material);
