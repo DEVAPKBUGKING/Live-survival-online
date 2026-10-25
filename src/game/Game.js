@@ -14,6 +14,14 @@ export class Game {
     this.profile = profile;
     this.isGodMode = false;
 
+    document.querySelectorAll('#game-hud, #hud-buttons, #joystick-base, #minimap-canvas').forEach(el => el.remove());
+    this.container.innerHTML = ''; 
+    // ------------------------------
+
+    this.container.style.position = 'absolute';
+    this.container.style.inset = '0';
+    this.container.style.zIndex = '0';
+
     this.container.style.position = 'absolute';
     this.container.style.inset = '0';
     this.container.style.zIndex = '0';
