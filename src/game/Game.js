@@ -6,6 +6,11 @@ import { PlayerSync } from '../multiplayer/PlayerSync.js';
 import { Inventory } from './Inventory.js';
 import { InventoryUI } from '../ui/InventoryUI.js';
 import { LocationUI } from '../ui/LocationUI.js';
+import { UIManager } from '../ui/UIManager.js';
+import { NPCManager } from './NPCManager.js';
+
+// Import Data NPC
+import { NPCGeco } from '../data/npc/NPCGeco.js';
 
 export class Game {
   constructor(container) {
@@ -23,6 +28,10 @@ export class Game {
     this.playerSync = null;
     this.inventory = null;
     this.locationUI = null;
+    this.uiManager = null;
+    
+    // Manager NPC
+    this.npcManager = null;
 
     this.modal = null;
     this.inventoryUI = null;
@@ -49,16 +58,6 @@ export class Game {
   }
 
   async start(onProgress) {
-    // --- KOTAK MERAH TES ---
-    const testBox = document.createElement('div');
-    testBox.style.cssText = `
-      position: fixed; top: 10px; left: 10px; width: 100px; height: 100px;
-      background: red; z-index: 999999; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold;
-    `;
-    testBox.textContent = 'TES';
-    document.body.appendChild(testBox);
-    // -----------------------
-
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(0x9dc8e8);
     this.renderDistance = 100;
@@ -92,6 +91,14 @@ export class Game {
     this.inventory.add('water', 3);
 
     this.locationUI = new LocationUI(this.container);
+    this.uiManager = new UIManager(this.container);
+
+    // --- LOAD NPC DARI DATA ---
+    this.npcManager = new NPCManager(this.scene, this.collision);
+    
+    const gecoInteract = this.npcManager.loadNPC(NPCGeco);
+    this.world.city.interactables.push(gecoInteract);
+    // --------------------------
 
     if (onProgress) onProgress(0.9, 'Menyiapkan UI');
     await new Promise(r => setTimeout(r, 0));
@@ -145,7 +152,7 @@ export class Game {
     this.interactBtn = document.createElement('button');
     this.interactBtn.id = 'btn-interact';
     this.interactBtn.style.cssText = `
-      position: fixed; top: 60%; right: 20px; width: 60px; height: 60px;
+      position: fixed; bottom: 25%; right: 20px; width: 60px; height: 60px;
       border-radius: 50%; background: rgba(59,130,246,0.8); color: #fff;
       border: 2px solid #fff; font-weight: bold; font-size: 16px;
       display: none; align-items: center; justify-content: center;
@@ -173,7 +180,7 @@ export class Game {
 
     this.buttonsEl.innerHTML = `
       <button id="btn-inventory" style="${btnStyle}">🎒</button>
-      <button id="btn-fullscreen" style="${btnStyle}">⛶</button>
+      <button id="btn-license" style="${btnStyle}">🪪</button>
       <button id="btn-settings" style="${btnStyle}">⚙</button>
     `;
     document.body.appendChild(this.buttonsEl);
@@ -181,7 +188,7 @@ export class Game {
     this.setupTouchControls();
 
     this.buttonsEl.querySelector('#btn-inventory').addEventListener('click', (e) => { e.stopPropagation(); this.openInventory(); });
-    this.buttonsEl.querySelector('#btn-fullscreen').addEventListener('click', (e) => { e.stopPropagation(); this.toggleFullscreen(); });
+    this.buttonsEl.querySelector('#btn-license').addEventListener('click', (e) => { e.stopPropagation(); this.uiManager.showLicense(); });
     this.buttonsEl.querySelector('#btn-settings').addEventListener('click', (e) => { e.stopPropagation(); this.openPauseMenu(); });
   }
 
@@ -279,11 +286,34 @@ export class Game {
 
   doInteract() {
     if (!this.nearbyInteractable) return;
+    
     if (this.nearbyInteractable.type === 'airport') this.openTravelMenu('Airport');
     else if (this.nearbyInteractable.type === 'subway') this.openTravelMenu('Subway');
+    else if (this.nearbyInteractable.type === 'npc') {
+      const npc = this.nearbyInteractable.npcRef;
+      const dialog = npc.getNextDialog();
+      
+      this.openModal('dialog');
+      this.uiManager.showDialog(npc.name, dialog.text, () => {
+        // Cek apakah ini dialog terakhir
+        if (npc.currentDialogIndex === 0) {
+          // Panggil aksi spesifik dari file data NPC
+          if (npc.data && npc.data.onDialogEnd) {
+            npc.data.onDialogEnd(this.uiManager);
+          }
+        }
+        this.closeModal();
+        this.uiManager.hideDialog();
+      });
+    }
   }
 
   openTravelMenu(type) {
+    if (!this.uiManager.hasLicense) {
+      this.showToast("Kamu tidak punya Lisensi (KTP) untuk masuk!");
+      return;
+    }
+
     if (!this.openModal('travel')) return;
     this.pauseEl = document.createElement('div');
     this.pauseEl.id = 'pause-menu';
@@ -316,6 +346,12 @@ export class Game {
         const country = btn.dataset.country;
         this.closeModal();
         
+        if (this.uiManager.money < 50) {
+          this.showToast("Uang tidak cukup!");
+          return;
+        }
+        this.uiManager.addMoney(-50);
+
         this.locationUI.showTeleportScreen(country, city, () => {
           this.camera.position.set(0, 1.6, 0);
           this.showToast(`Selamat datang di ${city}, ${country}!`);
@@ -393,7 +429,7 @@ export class Game {
     const container = this.hudEl?.querySelector('#toast-container');
     if (!container) return;
     const toast = document.createElement('div');
-    toast.style.cssText = `padding: 10px 16px; border-radius: 10px; background: rgba(20,20,40,0.95); border: 1px solid #3b82f6; color: #e8e8f0; font-size: 12px; text-align: center;`;
+    toast.style.cssText = `padding: 10px 16px; border-radius: 10px; background: rgba(20,20,40,0.95); border: 1px solid #3b82f6; color: #e8e8f0; font-size: 12px; text-align: center; pointer-events: none;`;
     toast.textContent = text;
     container.appendChild(toast);
     setTimeout(() => { toast.style.opacity = '0'; toast.style.transition = 'opacity 0.4s'; setTimeout(() => toast.remove(), 400); }, 3000);
