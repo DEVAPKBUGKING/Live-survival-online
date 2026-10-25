@@ -15,10 +15,12 @@ export class HistoryRooms {
     this.el.id = 'history-screen';
     this.el.className = 'modal-screen';
     this.el.innerHTML = `
-      <div class="modal-panel" style="max-width:400px">
+      <div class="modal-panel">
         <h2>ROOM HISTORY</h2>
         <div class="history-list"></div>
-        <button class="secondary" id="history-back" style="width:100%;padding:14px;border-radius:10px;margin-top:8px">BACK</button>
+        <div class="modal-buttons" style="margin-top: 16px;">
+          <button class="secondary" id="history-back" style="width: 100%;">BACK</button>
+        </div>
       </div>
     `;
     this.container.appendChild(this.el);
@@ -26,41 +28,34 @@ export class HistoryRooms {
     const list = this.el.querySelector('.history-list');
 
     if (history.length === 0) {
-      list.innerHTML = '<div style="text-align:center;color:#6b7280;font-size:13px;padding:20px">Belum ada room.</div>';
+      list.innerHTML = '<div style="text-align:center;color:#6b7280;font-size:13px;padding:20px">Belum ada room yang pernah di-join.</div>';
     } else {
-      // Cek status room masih ada atau tidak
       for (const h of history) {
         const card = document.createElement('div');
         card.className = 'history-room';
         card.innerHTML = `
-          <div class="history-name">${h.roomName || 'Room'}</div>
-          <div class="history-code">${h.code}</div>
-          <div class="history-status">Cek...</div>
-          <button class="history-join">JOIN</button>
+          <div class="history-info">
+            <div class="history-name">${h.roomName || 'Room'}</div>
+            <div class="history-code">${h.code}</div>
+            <div class="history-status">Cek status...</div>
+          </div>
+          <button class="history-join" disabled>JOIN</button>
         `;
         list.appendChild(card);
-
-        // Cek apakah room masih ada
-        const { data } = await supabase
-          .from('rooms').select('id, status, name')
-          .eq('code', h.code).limit(1);
 
         const statusEl = card.querySelector('.history-status');
         const joinBtn = card.querySelector('.history-join');
 
+        // Cek apakah room masih ada di database
+        const { data } = await supabase
+          .from('rooms').select('id, status')
+          .eq('code', h.code).limit(1);
+
         if (data && data.length > 0) {
           const room = data[0];
-          if (room.status === 'lobby') {
-            statusEl.textContent = 'Masih tersedia';
+          if (room.status === 'lobby' || room.status === 'playing') {
+            statusEl.textContent = 'Tersedia';
             statusEl.style.color = '#6ee7b7';
-            joinBtn.disabled = false;
-            joinBtn.addEventListener('click', () => {
-              this.hide();
-              this.onSelect(h.code);
-            });
-          } else if (room.status === 'playing') {
-            statusEl.textContent = 'Sedang bermain';
-            statusEl.style.color = '#fbbf24';
             joinBtn.disabled = false;
             joinBtn.addEventListener('click', () => {
               this.hide();
@@ -69,12 +64,10 @@ export class HistoryRooms {
           } else {
             statusEl.textContent = 'Sudah berakhir';
             statusEl.style.color = '#ef4444';
-            joinBtn.disabled = true;
           }
         } else {
           statusEl.textContent = 'Tidak ditemukan';
           statusEl.style.color = '#ef4444';
-          joinBtn.disabled = true;
         }
       }
     }
