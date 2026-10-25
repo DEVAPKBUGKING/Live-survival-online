@@ -7,6 +7,28 @@ export class CityBuilder {
     this.interactables = [];
   }
 
+  createRoad(x, z, width, length, isVertical = false) {
+    const roadMat = new THREE.MeshLambertMaterial({ color: 0x2a2a2a });
+    const road = new THREE.Mesh(new THREE.PlaneGeometry(width, length), roadMat);
+    road.rotation.x = -Math.PI / 2;
+    if (isVertical) road.rotation.z = Math.PI / 2;
+    road.position.set(x, 0.01, z);
+    road.receiveShadow = true;
+    this.scene.add(road);
+
+    // Trotoar (Sidewalk)
+    const walkMat = new THREE.MeshLambertMaterial({ color: 0x888888 });
+    const sw1 = new THREE.Mesh(new THREE.PlaneGeometry(1.5, length), walkMat);
+    sw1.rotation.x = -Math.PI / 2;
+    if (isVertical) sw1.rotation.z = Math.PI / 2;
+    sw1.position.set(x + (isVertical ? 0 : width/2 + 0.75), 0.02, z + (isVertical ? length/2 + 0.75 : 0));
+    this.scene.add(sw1);
+
+    const sw2 = sw1.clone();
+    sw2.position.set(x - (isVertical ? 0 : width/2 + 0.75), 0.02, z - (isVertical ? length/2 + 0.75 : 0));
+    this.scene.add(sw2);
+  }
+
   createSkyscraper(x, z, width, depth, height, color) {
     const mat = new THREE.MeshLambertMaterial({ color });
     const geo = new THREE.BoxGeometry(width, height, depth);
@@ -17,9 +39,10 @@ export class CityBuilder {
     this.scene.add(mesh);
     this.collision.addBox(x - width/2, 0, z - depth/2, x + width/2, height, z + depth/2);
 
-    const windowMat = new THREE.MeshLambertMaterial({ color: 0x222222 });
-    for (let i = 2; i < height - 2; i += 3) {
-      const windowGeo = new THREE.BoxGeometry(width + 0.1, 1, depth + 0.1);
+    // Jendela
+    const windowMat = new THREE.MeshLambertMaterial({ color: 0x111111 });
+    for (let i = 2; i < height - 2; i += 4) {
+      const windowGeo = new THREE.BoxGeometry(width + 0.1, 1.5, depth + 0.1);
       const windowMesh = new THREE.Mesh(windowGeo, windowMat);
       windowMesh.position.set(x, i, z);
       this.scene.add(windowMesh);
@@ -29,7 +52,6 @@ export class CityBuilder {
 
   createHouse(x, z, width, depth, color) {
     const h = 4;
-    // Dinding
     const wallMat = new THREE.MeshLambertMaterial({ color });
     const house = new THREE.Mesh(new THREE.BoxGeometry(width, h, depth), wallMat);
     house.position.set(x, h / 2, z);
@@ -37,14 +59,12 @@ export class CityBuilder {
     this.scene.add(house);
     this.collision.addBox(x - width/2, 0, z - depth/2, x + width/2, h, z + depth/2);
 
-    // Atap
     const roofMat = new THREE.MeshLambertMaterial({ color: 0x8a3a1a });
     const roof = new THREE.Mesh(new THREE.ConeGeometry(width * 0.8, 3, 4), roofMat);
     roof.position.set(x, h + 1.5, z);
-    roof.rotation.y = Math.PI / 4; // Supaya pas di kotak
+    roof.rotation.y = Math.PI / 4; 
     this.scene.add(roof);
 
-    // Pintu
     const doorMat = new THREE.MeshLambertMaterial({ color: 0x3a2a1a });
     const door = new THREE.Mesh(new THREE.BoxGeometry(1.5, 2.5, 0.2), doorMat);
     door.position.set(x, 1.25, z + depth/2);
@@ -78,7 +98,7 @@ export class CityBuilder {
     this.interactables.push({
       type: 'airport',
       position: new THREE.Vector3(x, 0, z + 15),
-      radius: 5
+      radius: 6
     });
   }
 
@@ -99,7 +119,7 @@ export class CityBuilder {
     this.interactables.push({
       type: 'subway',
       position: new THREE.Vector3(x, 0, z + 6),
-      radius: 5
+      radius: 6
     });
   }
 }
