@@ -5,11 +5,13 @@ export class Controls {
 
     this.yaw = 0;
     this.pitch = 0;
-    this.speed = 3.5;
-    this.joystick = null;
+    this.speed = 4.0;
+    this.joystick = { x: 0, y: 0 };
     this.keys = {};
 
-    this.lookSensitivity = 0.0025;
+    this.lookSensitivity = 0.0028;
+    this.minPitch = -Math.PI / 2 + 0.01;
+    this.maxPitch = Math.PI / 2 - 0.01;
 
     this._onKeyDown = (e) => { this.keys[e.code] = true; };
     this._onKeyUp = (e) => { this.keys[e.code] = false; };
@@ -22,8 +24,7 @@ export class Controls {
       if (document.pointerLockElement === this.canvas) {
         this.yaw -= e.movementX * this.lookSensitivity;
         this.pitch -= e.movementY * this.lookSensitivity;
-        const lim = Math.PI / 2 - 0.01;
-        this.pitch = Math.max(-lim, Math.min(lim, this.pitch));
+        this.pitch = Math.max(this.minPitch, Math.min(this.maxPitch, this.pitch));
         this.applyRotation();
       }
     };
@@ -51,8 +52,7 @@ export class Controls {
   lookDelta(dx, dy) {
     this.yaw -= dx * this.lookSensitivity;
     this.pitch -= dy * this.lookSensitivity;
-    const lim = Math.PI / 2 - 0.01;
-    this.pitch = Math.max(-lim, Math.min(lim, this.pitch));
+    this.pitch = Math.max(this.minPitch, Math.min(this.maxPitch, this.pitch));
     this.applyRotation();
   }
 
@@ -63,32 +63,42 @@ export class Controls {
   }
 
   update(dt) {
-    let moveX = 0;
-    let moveZ = 0;
+    // Joystick: x = strafe (kanan positif), y = maju/mundur (atas negatif)
+    // Kita mau: dorong joystick ke ATAS (y negatif) = MAJU.
+    let strafe = 0;
+    let forward = 0;
 
-    if (this.joystick) {
-      moveX = this.joystick.x;
-      moveZ = -this.joystick.y;
+    if (this.joystick && (this.joystick.x !== 0 || this.joystick.y !== 0)) {
+      strafe = this.joystick.x;
+      forward = -this.joystick.y;   // <-- fix: ke atas joystick (y negatif) = maju (forward positif)
     } else {
-      if (this.keys['KeyW']) moveZ -= 1;
-      if (this.keys['KeyS']) moveZ += 1;
-      if (this.keys['KeyA']) moveX -= 1;
-      if (this.keys['KeyD']) moveX += 1;
+      if (this.keys['KeyW']) forward += 1;
+      if (this.keys['KeyS']) forward -= 1;
+      if (this.keys['KeyD']) strafe += 1;
+      if (this.keys['KeyA']) strafe -= 1;
     }
 
-    const len = Math.sqrt(moveX * moveX + moveZ * moveZ);
-    if (len > 1) { moveX /= len; moveZ /= len; }
+    // Normalisasi diagonal
+    const len = Math.hypot(strafe, forward);
+    if (len > 1) { strafe /= len; forward /= len; }
 
-    const cos = Math.cos(this.yaw);
-    const sin = Math.sin(this.yaw);
-    const worldX = moveX * cos - moveZ * sin;
-    const worldZ = moveX * sin + moveZ * cos;
+    // Arah gerak dalam world space berdasarkan yaw kamera.
+    // Forward kamera (Three.js) = -Z lokal. Diterapkan rotasi yaw:
+    //   worldForwardX = -sin(yaw)
+    //   worldForwardZ = -cos(yaw)
+    // Strafe kanan = (cos(yaw), -sin(yaw)) -- turunan dari cross.
+    const sinY = Math.sin(this.yaw);
+    const cosY = Math.cos(this.yaw);
+
+    const worldX = -forward * sinY + strafe * cosY;
+    const worldZ = -forward * cosY - strafe * sinY;
 
     const moveSpeed = this.speed * dt;
     this.camera.position.x += worldX * moveSpeed;
     this.camera.position.z += worldZ * moveSpeed;
     this.camera.position.y = 1.6;
 
+    // Clamp world
     this.camera.position.x = Math.max(-37, Math.min(37, this.camera.position.x));
     this.camera.position.z = Math.max(-37, Math.min(37, this.camera.position.z));
   }
