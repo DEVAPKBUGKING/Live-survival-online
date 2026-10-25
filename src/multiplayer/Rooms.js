@@ -1,4 +1,5 @@
 import { supabase, getClientId } from '../config/supabase.js';
+import { PlayerSync } from './PlayerSync.js';
 
 function generateRoomCode() {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -13,6 +14,7 @@ export class Rooms {
     this.currentPlayer = null;
     this.channel = null;
     this.listeners = new Set();
+    this.sync = null;
   }
 
   async createRoom({ name, roomName, maxPlayers }) {
@@ -97,6 +99,10 @@ export class Rooms {
         (payload) => this.emit('room_changed', payload.new))
       .on('broadcast', { event: 'start_game' },
         (payload) => this.emit('start_game', payload.payload))
+      .on('broadcast', { event: 'pos' },
+        (payload) => this.emit('pos', payload.payload))
+      .on('broadcast', { event: 'bye' },
+        (payload) => this.emit('bye', payload.payload))
       .subscribe((status) => this.emit('connection', status));
   }
 
@@ -127,6 +133,7 @@ export class Rooms {
       .eq('id', this.currentRoom.id);
     if (error) throw new Error('Gagal start: ' + error.message);
 
+    // Broadcast untuk pemain lain
     await this.channel.send({
       type: 'broadcast', event: 'start_game',
       payload: { startedAt: Date.now(), roomId: this.currentRoom.id }
@@ -137,11 +144,30 @@ export class Rooms {
     if (!this.currentPlayer) return;
     const isHost = this.currentPlayer.is_host;
     const roomId = this.currentRoom.id;
+
+    // Beritahu pemain lain
+    try {
+      await this.channel?.send({
+        type: 'broadcast', event: 'bye',
+        payload: { clientId: getClientId() }
+      });
+    } catch {}
+
+    this.sync?.destroy();
+    this.sync = null;
+
     await supabase.from('room_players').delete().eq('id', this.currentPlayer.id);
     if (isHost) await supabase.from('rooms').delete().eq('id', roomId);
+
     this.unsubscribe();
     this.currentRoom = null;
     this.currentPlayer = null;
+  }
+
+  // Broadcast posisi lokal (dipanggil tiap ~100ms dari PlayerSync)
+  sendPosition(data) {
+    if (!this.channel) return;
+    this.channel.send({ type: 'broadcast', event: 'pos', payload: data });
   }
 
   on(event, cb) {
