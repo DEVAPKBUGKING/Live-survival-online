@@ -14,7 +14,6 @@ export class Controls {
     this.minPitch = -Math.PI / 2 + 0.01;
     this.maxPitch = Math.PI / 2 - 0.01;
 
-    // Camera bob
     this.bobPhase = 0;
     this.bobAmplitude = 0.045;
     this.bobFrequency = 8.5;
@@ -22,7 +21,6 @@ export class Controls {
 
     this.playerRadius = 0.35;
 
-    // Mouse drag fallback (kalau pointer lock gagal)
     this.dragging = false;
     this.lastMouse = { x: 0, y: 0 };
     this.pointerLockFailed = false;
@@ -38,16 +36,13 @@ export class Controls {
       }
     };
 
-    // FIX: dengarkan di document, bukan cuma saat pointerLockElement === canvas
     this._onMouseMove = (e) => {
       if (document.pointerLockElement === this.canvas) {
-        // Pointer lock aktif — pakai movementX/Y
         this.yaw -= (e.movementX || 0) * this.lookSensitivity;
         this.pitch -= (e.movementY || 0) * this.lookSensitivity;
         this.pitch = Math.max(this.minPitch, Math.min(this.maxPitch, this.pitch));
         this.applyRotation();
       } else if (this.dragging) {
-        // Fallback: drag dengan mouse ditekan
         const dx = e.clientX - this.lastMouse.x;
         const dy = e.clientY - this.lastMouse.y;
         this.lastMouse.x = e.clientX;
@@ -71,7 +66,6 @@ export class Controls {
 
     this._onPointerLockError = () => {
       this.pointerLockFailed = true;
-      console.warn('[Controls] Pointer lock gagal, pakai drag-to-look.');
     };
   }
 
@@ -162,7 +156,7 @@ export class Controls {
     }
 
     this.camera.position.y = 1.6 + this.currentBob;
-    this.camera.position.x = Math.max(-37, Math.min(37, this.camera.position.x));
-    this.camera.position.z = Math.max(-37, Math.min(37, this.camera.position.z));
+    
+    // DINDING GAIB SUDAH DIHAPUS DARI SINI
   }
 }
