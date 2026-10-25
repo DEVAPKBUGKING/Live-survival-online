@@ -9,8 +9,8 @@ import { LocationUI } from '../ui/LocationUI.js';
 import { UIManager } from '../ui/UIManager.js';
 import { NPCManager } from './NPCManager.js';
 
-// Import Data NPC
 import { NPCGeco } from '../data/npc/NPCGeco.js';
+import { CityCucum } from '../data/city/CityCucum.js';
 
 export class Game {
   constructor(container) {
@@ -29,8 +29,6 @@ export class Game {
     this.inventory = null;
     this.locationUI = null;
     this.uiManager = null;
-    
-    // Manager NPC
     this.npcManager = null;
 
     this.modal = null;
@@ -78,7 +76,7 @@ export class Game {
     if (onProgress) onProgress(0.1, 'Menyiapkan renderer');
     await new Promise(r => setTimeout(r, 0));
 
-    this.world = new World(this.scene, this.collision);
+    this.world = new World(this.scene, this.collision, CityCucum);
     await this.world.build((p, label) => {
       if (onProgress) onProgress(0.1 + p * 0.7, label);
     });
@@ -93,12 +91,9 @@ export class Game {
     this.locationUI = new LocationUI(this.container);
     this.uiManager = new UIManager(this.container);
 
-    // --- LOAD NPC DARI DATA ---
     this.npcManager = new NPCManager(this.scene, this.collision);
-    
     const gecoInteract = this.npcManager.loadNPC(NPCGeco);
-    this.world.city.interactables.push(gecoInteract);
-    // --------------------------
+    if (gecoInteract) this.world.city.interactables.push(gecoInteract);
 
     if (onProgress) onProgress(0.9, 'Menyiapkan UI');
     await new Promise(r => setTimeout(r, 0));
@@ -142,7 +137,6 @@ export class Game {
     this.hudEl = document.createElement('div');
     this.hudEl.id = 'game-hud';
     this.hudEl.style.cssText = `position: fixed; inset: 0; pointer-events: none; z-index: 50;`;
-    
     this.hudEl.innerHTML = `
       <div id="crosshair" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 6px; height: 6px; border-radius: 50%; background: rgba(255,255,255,0.75); box-shadow: 0 0 6px rgba(0,0,0,0.6);"></div>
       <div id="toast-container" style="position: absolute; top: 72px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; gap: 8px; pointer-events: none; z-index: 80; width: 90%; max-width: 360px;"></div>
@@ -181,6 +175,7 @@ export class Game {
     this.buttonsEl.innerHTML = `
       <button id="btn-inventory" style="${btnStyle}">🎒</button>
       <button id="btn-license" style="${btnStyle}">🪪</button>
+      <button id="btn-fullscreen" style="${btnStyle}">⛶</button>
       <button id="btn-settings" style="${btnStyle}">⚙</button>
     `;
     document.body.appendChild(this.buttonsEl);
@@ -189,6 +184,7 @@ export class Game {
 
     this.buttonsEl.querySelector('#btn-inventory').addEventListener('click', (e) => { e.stopPropagation(); this.openInventory(); });
     this.buttonsEl.querySelector('#btn-license').addEventListener('click', (e) => { e.stopPropagation(); this.uiManager.showLicense(); });
+    this.buttonsEl.querySelector('#btn-fullscreen').addEventListener('click', (e) => { e.stopPropagation(); this.toggleFullscreen(); });
     this.buttonsEl.querySelector('#btn-settings').addEventListener('click', (e) => { e.stopPropagation(); this.openPauseMenu(); });
   }
 
@@ -295,9 +291,7 @@ export class Game {
       
       this.openModal('dialog');
       this.uiManager.showDialog(npc.name, dialog.text, () => {
-        // Cek apakah ini dialog terakhir
         if (npc.currentDialogIndex === 0) {
-          // Panggil aksi spesifik dari file data NPC
           if (npc.data && npc.data.onDialogEnd) {
             npc.data.onDialogEnd(this.uiManager);
           }
