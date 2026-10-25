@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { World } from './World.js';
 import { Controls } from './Controls.js';
 import { Collision } from './Collision.js';
+import { PlayerSync } from '../multiplayer/PlayerSync.js';
 
 export class Game {
   constructor(container) {
@@ -12,6 +13,7 @@ export class Game {
     this.world = null;
     this.controls = null;
     this.collision = new Collision();
+    this.playerSync = null;
     this.running = false;
     this.paused = false;
     this.clock = new THREE.Clock();
@@ -21,7 +23,6 @@ export class Game {
     this.isFullscreen = false;
   }
 
-  // onProgress(percent 0..1, label)
   async start(onProgress) {
     // ---- Scene ----
     this.scene = new THREE.Scene();
@@ -43,9 +44,8 @@ export class Game {
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.25));
     this.renderer.setSize(window.innerWidth, window.innerHeight);
     this.renderer.shadowMap.enabled = true;
-    this.renderer.shadowMap.type = THREE.BasicShadowMap; // termurah
+    this.renderer.shadowMap.type = THREE.BasicShadowMap;
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
-    // Tone mapping matikan — Lambert + hemisphere sudah cukup cerah
     this.renderer.toneMapping = THREE.NoToneMapping;
     this.container.appendChild(this.renderer.domElement);
 
@@ -68,6 +68,13 @@ export class Game {
 
     // ---- HUD ----
     this.createHUD();
+
+    // ---- Multiplayer character sync ----
+    if (window.__rooms && window.__rooms.currentRoom) {
+      this.playerSync = new PlayerSync(this.scene, this.camera, window.__rooms);
+    } else {
+      this.playerSync = null;
+    }
 
     // ---- Resize ----
     this.onResize = () => this.handleResize();
@@ -216,9 +223,6 @@ export class Game {
     if (btn) btn.classList.toggle('fs-on', this.isFullscreen);
   }
 
-  // ============================================================
-  // Pause menu — sekarang punya EXIT yang kembali ke home
-  // ============================================================
   openPauseMenu() {
     if (this.paused) return;
     this.paused = true;
@@ -255,7 +259,6 @@ export class Game {
     this.paused = false;
   }
 
-  // Settings: sensitivity, speed, DAN tombol EXIT yang kembali ke home
   openSettings() {
     const panel = this.pauseEl?.querySelector('.pause-panel');
     if (!panel) return;
@@ -311,9 +314,12 @@ export class Game {
     if (!this.running) return;
     requestAnimationFrame(() => this.animate());
     const dt = Math.min(this.clock.getDelta(), 0.1);
+
     if (!this.paused) {
       this.controls.update(dt);
+      if (this.playerSync) this.playerSync.update(dt);
     }
+
     this.renderer.render(this.scene, this.camera);
   }
 
@@ -321,6 +327,8 @@ export class Game {
     this.running = false;
     window.removeEventListener('resize', this.onResize);
     document.removeEventListener('fullscreenchange', this.onFsChange);
+    this.playerSync?.destroy();
+    this.playerSync = null;
     this.controls?.disable();
     this.renderer?.dispose();
     if (this.renderer?.domElement?.parentNode) {
