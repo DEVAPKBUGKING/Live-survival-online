@@ -19,25 +19,59 @@ export class Controls {
     this.bobAmplitude = 0.045;
     this.bobFrequency = 8.5;
     this.currentBob = 0;
-    this.lastMoveSpeed = 0;
 
-    // Player collision radius
     this.playerRadius = 0.35;
+
+    // Mouse drag fallback (kalau pointer lock gagal)
+    this.dragging = false;
+    this.lastMouse = { x: 0, y: 0 };
+    this.pointerLockFailed = false;
 
     this._onKeyDown = (e) => { this.keys[e.code] = true; };
     this._onKeyUp = (e) => { this.keys[e.code] = false; };
 
     this._onCanvasClick = () => {
-      if (this.canvas.requestPointerLock) this.canvas.requestPointerLock();
+      if (this.pointerLockFailed) return;
+      if (this.canvas.requestPointerLock) {
+        const p = this.canvas.requestPointerLock();
+        if (p && p.catch) p.catch(() => { this.pointerLockFailed = true; });
+      }
     };
 
-    this._onPointerLockMove = (e) => {
+    // FIX: dengarkan di document, bukan cuma saat pointerLockElement === canvas
+    this._onMouseMove = (e) => {
       if (document.pointerLockElement === this.canvas) {
-        this.yaw -= e.movementX * this.lookSensitivity;
-        this.pitch -= e.movementY * this.lookSensitivity;
+        // Pointer lock aktif — pakai movementX/Y
+        this.yaw -= (e.movementX || 0) * this.lookSensitivity;
+        this.pitch -= (e.movementY || 0) * this.lookSensitivity;
+        this.pitch = Math.max(this.minPitch, Math.min(this.maxPitch, this.pitch));
+        this.applyRotation();
+      } else if (this.dragging) {
+        // Fallback: drag dengan mouse ditekan
+        const dx = e.clientX - this.lastMouse.x;
+        const dy = e.clientY - this.lastMouse.y;
+        this.lastMouse.x = e.clientX;
+        this.lastMouse.y = e.clientY;
+        this.yaw -= dx * this.lookSensitivity;
+        this.pitch -= dy * this.lookSensitivity;
         this.pitch = Math.max(this.minPitch, Math.min(this.maxPitch, this.pitch));
         this.applyRotation();
       }
+    };
+
+    this._onMouseDown = (e) => {
+      if (e.button === 0 && document.pointerLockElement !== this.canvas) {
+        this.dragging = true;
+        this.lastMouse.x = e.clientX;
+        this.lastMouse.y = e.clientY;
+      }
+    };
+
+    this._onMouseUp = () => { this.dragging = false; };
+
+    this._onPointerLockError = () => {
+      this.pointerLockFailed = true;
+      console.warn('[Controls] Pointer lock gagal, pakai drag-to-look.');
     };
   }
 
@@ -45,20 +79,24 @@ export class Controls {
     window.addEventListener('keydown', this._onKeyDown);
     window.addEventListener('keyup', this._onKeyUp);
     this.canvas.addEventListener('click', this._onCanvasClick);
-    document.addEventListener('mousemove', this._onPointerLockMove);
+    document.addEventListener('mousemove', this._onMouseMove);
+    document.addEventListener('mousedown', this._onMouseDown);
+    document.addEventListener('mouseup', this._onMouseUp);
+    document.addEventListener('pointerlockerror', this._onPointerLockError);
   }
 
   disable() {
     window.removeEventListener('keydown', this._onKeyDown);
     window.removeEventListener('keyup', this._onKeyUp);
     this.canvas.removeEventListener('click', this._onCanvasClick);
-    document.removeEventListener('mousemove', this._onPointerLockMove);
+    document.removeEventListener('mousemove', this._onMouseMove);
+    document.removeEventListener('mousedown', this._onMouseDown);
+    document.removeEventListener('mouseup', this._onMouseUp);
+    document.removeEventListener('pointerlockerror', this._onPointerLockError);
     if (document.pointerLockElement === this.canvas) document.exitPointerLock();
   }
 
-  setJoystick(value) {
-    this.joystick = value;
-  }
+  setJoystick(value) { this.joystick = value; }
 
   lookDelta(dx, dy) {
     this.yaw -= dx * this.lookSensitivity;
@@ -99,7 +137,6 @@ export class Controls {
     const dx = worldX * moveSpeed;
     const dz = worldZ * moveSpeed;
 
-    // ---- Collision resolve: coba X lalu Z (slide) ----
     const px = this.camera.position.x;
     const pz = this.camera.position.z;
     const r = this.playerRadius;
@@ -107,36 +144,24 @@ export class Controls {
     let nx = px;
     let nz = pz;
 
-    // Geser X
-    if (!this.collision.isBlocked(px + dx, pz, r)) {
-      nx = px + dx;
-    }
-    // Geser Z (pakai nx yang sudah diupdate)
-    if (!this.collision.isBlocked(nx, pz + dz, r)) {
-      nz = pz + dz;
-    }
+    if (!this.collision.isBlocked(px + dx, pz, r)) nx = px + dx;
+    if (!this.collision.isBlocked(nx, pz + dz, r)) nz = pz + dz;
 
     this.camera.position.x = nx;
     this.camera.position.z = nz;
 
-    // ---- Camera bob ----
     const actualSpeed = Math.hypot(nx - px, nz - pz) / Math.max(dt, 0.0001);
-    this.lastMoveSpeed = actualSpeed;
 
     if (actualSpeed > 0.3) {
       this.bobPhase += dt * this.bobFrequency;
       const target = Math.sin(this.bobPhase) * this.bobAmplitude;
       this.currentBob += (target - this.currentBob) * Math.min(1, dt * 12);
     } else {
-      // Redam ke 0 saat berhenti
       this.currentBob += (0 - this.currentBob) * Math.min(1, dt * 10);
       if (Math.abs(this.currentBob) < 0.001) this.currentBob = 0;
     }
 
-    // Eye height + bob
     this.camera.position.y = 1.6 + this.currentBob;
-
-    // Clamp world
     this.camera.position.x = Math.max(-37, Math.min(37, this.camera.position.x));
     this.camera.position.z = Math.max(-37, Math.min(37, this.camera.position.z));
   }
