@@ -1,5 +1,4 @@
 import { supabase, getClientId } from '../config/supabase.js';
-import { PlayerSync } from './PlayerSync.js';
 
 function generateRoomCode() {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -8,13 +7,20 @@ function generateRoomCode() {
   return code;
 }
 
+function saveToHistory(room) {
+  const key = 'lso_room_history';
+  const history = JSON.parse(localStorage.getItem(key) || '[]');
+  const filtered = history.filter(h => h.code !== room.code);
+  filtered.unshift({ code: room.code, roomName: room.name, joinedAt: Date.now() });
+  localStorage.setItem(key, JSON.stringify(filtered.slice(0, 10)));
+}
+
 export class Rooms {
   constructor() {
     this.currentRoom = null;
     this.currentPlayer = null;
     this.channel = null;
     this.listeners = new Set();
-    this.sync = null;
   }
 
   async createRoom({ name, roomName, maxPlayers }) {
@@ -41,6 +47,7 @@ export class Rooms {
 
     this.currentRoom = room;
     this.currentPlayer = player;
+    saveToHistory(room);
     await this.subscribeToRoom(room.id);
     return { room, player };
   }
@@ -51,15 +58,17 @@ export class Rooms {
 
     const { data: rooms, error: rErr } = await supabase
       .from('rooms').select('*')
-      .eq('code', upperCode).eq('status', 'lobby').limit(1);
+      .eq('code', upperCode).limit(1);
     if (rErr) throw new Error('Gagal cari room: ' + rErr.message);
-    if (!rooms || rooms.length === 0) throw new Error('Room tidak ditemukan atau sudah dimulai.');
+    if (!rooms || rooms.length === 0) throw new Error('Room tidak ditemukan.');
     const room = rooms[0];
 
-    const { count, error: cErr } = await supabase
+    // Kalau status playing, izinkan join sebagai spectator/player baru
+    if (room.status === 'ended') throw new Error('Room sudah berakhir.');
+
+    const { count } = await supabase
       .from('room_players').select('*', { count: 'exact', head: true })
       .eq('room_id', room.id);
-    if (cErr) throw new Error('Gagal cek kapasitas: ' + cErr.message);
     if (count >= room.max_players) throw new Error(`Room penuh (${count}/${room.max_players}).`);
 
     const { data: existing } = await supabase
@@ -67,6 +76,7 @@ export class Rooms {
       .eq('room_id', room.id).eq('client_id', clientId).limit(1);
 
     let player;
+    let isNewJoin = false;
     if (existing && existing.length > 0) {
       player = existing[0];
     } else {
@@ -76,11 +86,22 @@ export class Rooms {
         .select().single();
       if (pErr) throw new Error('Gagal join: ' + pErr.message);
       player = p;
+      isNewJoin = true;
     }
 
     this.currentRoom = room;
     this.currentPlayer = player;
+    saveToHistory(room);
     await this.subscribeToRoom(room.id);
+
+    // Notifikasi ke pemain lain kalau ini join baru
+    if (isNewJoin) {
+      this.channel?.send({
+        type: 'broadcast', event: 'player_joined',
+        payload: { name, clientId }
+      });
+    }
+
     return { room, player };
   }
 
@@ -103,6 +124,8 @@ export class Rooms {
         (payload) => this.emit('pos', payload.payload))
       .on('broadcast', { event: 'bye' },
         (payload) => this.emit('bye', payload.payload))
+      .on('broadcast', { event: 'player_joined' },
+        (payload) => this.emit('player_joined', payload.payload))
       .subscribe((status) => this.emit('connection', status));
   }
 
@@ -133,19 +156,16 @@ export class Rooms {
       .eq('id', this.currentRoom.id);
     if (error) throw new Error('Gagal start: ' + error.message);
 
-    // Broadcast untuk pemain lain
     await this.channel.send({
       type: 'broadcast', event: 'start_game',
       payload: { startedAt: Date.now(), roomId: this.currentRoom.id }
     });
   }
 
+  // Leave tanpa menghapus room — room tetap ada untuk di-join lagi
   async leaveRoom() {
     if (!this.currentPlayer) return;
-    const isHost = this.currentPlayer.is_host;
-    const roomId = this.currentRoom.id;
 
-    // Beritahu pemain lain
     try {
       await this.channel?.send({
         type: 'broadcast', event: 'bye',
@@ -153,18 +173,13 @@ export class Rooms {
       });
     } catch {}
 
-    this.sync?.destroy();
-    this.sync = null;
-
     await supabase.from('room_players').delete().eq('id', this.currentPlayer.id);
-    if (isHost) await supabase.from('rooms').delete().eq('id', roomId);
 
     this.unsubscribe();
     this.currentRoom = null;
     this.currentPlayer = null;
   }
 
-  // Broadcast posisi lokal (dipanggil tiap ~100ms dari PlayerSync)
   sendPosition(data) {
     if (!this.channel) return;
     this.channel.send({ type: 'broadcast', event: 'pos', payload: data });
