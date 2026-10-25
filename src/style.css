@@ -205,12 +205,11 @@ html, body {
 #look-zone {
   position: absolute;
   right: 0;
-  top: 0;
+  top: 25%;
   width: 55%;
-  height: 60%;
+  height: 50%;
   pointer-events: auto;
   touch-action: none;
-}
 
 /* HUD buttons: sibling #game-hud, di atas look-zone */
 #hud-buttons {
