@@ -14,13 +14,10 @@ export class Game {
     this.profile = profile;
     this.isGodMode = false;
 
+    // --- PEMBERSIH HUD NYANGKUT ---
     document.querySelectorAll('#game-hud, #hud-buttons, #joystick-base, #minimap-canvas').forEach(el => el.remove());
     this.container.innerHTML = ''; 
     // ------------------------------
-
-    this.container.style.position = 'absolute';
-    this.container.style.inset = '0';
-    this.container.style.zIndex = '0';
 
     this.container.style.position = 'absolute';
     this.container.style.inset = '0';
@@ -37,6 +34,11 @@ export class Game {
     this.locationUI = null;
     this.uiManager = null;
 
+    // Variabel Mobil
+    this.isDriving = false;
+    this.drivenVehicle = null;
+
+    // Variabel Minimap
     this.minimapCanvas = null;
     this.minimapCtx = null;
 
@@ -66,7 +68,6 @@ export class Game {
 
   async start(onProgress) {
     try {
-      // 1. SETUP 3D DASAR (PALING PENTING)
       this.scene = new THREE.Scene();
       this.scene.background = new THREE.Color(0x9dc8e8);
       this.renderDistance = 150;
@@ -87,13 +88,11 @@ export class Game {
       if (onProgress) onProgress(0.1, 'Menyiapkan renderer');
       await new Promise(r => setTimeout(r, 0));
 
-      // 2. BANGUN DUNIA (GEDUNG, JALAN, DLL)
       this.world = new World(this.scene, this.collision, null);
       await this.world.build((p, label) => {
         if (onProgress) onProgress(0.1 + p * 0.7, label);
       });
 
-      // 3. KONTROL & INVENTORY
       this.controls = new Controls(this.camera, this.renderer.domElement, this.collision);
       this.controls.enable();
       this.controls.setJoystick(this.joyValue);
@@ -101,7 +100,6 @@ export class Game {
       this.inventory = new Inventory();
       this.inventory.add('water', 3);
 
-      // 4. UI (KALAU INI ERROR, GAME TETEP JALAN)
       try {
         this.locationUI = new LocationUI(this.container);
         this.uiManager = new UIManager(this.container, this.profile);
@@ -115,7 +113,6 @@ export class Game {
       this.createHUD();
       this.createMinimap();
 
-      // 5. MULTIPLAYER (KALAU INI GAGAL, GAME TETEP JALAN)
       try {
         if (window.__rooms && window.__rooms.currentRoom) {
           this.playerSync = new PlayerSync(this.scene, this.camera, window.__rooms);
@@ -147,7 +144,6 @@ export class Game {
       this.renderer.render(this.scene, this.camera);
       if (onProgress) onProgress(1, 'Selesai');
 
-      // 6. JALANKAN GAME
       this.running = true;
       this.animate();
 
@@ -187,14 +183,17 @@ export class Game {
     ctx.translate(cx, cy);
     ctx.rotate(-this.controls.yaw);
 
+    // Jalan
     ctx.fillStyle = '#555';
-    ctx.fillRect(-10 * scale, -300 * scale, 20 * scale, 600 * scale);
+    ctx.fillRect(-10 * scale, -200 * scale, 20 * scale, 400 * scale);
 
+    // Titik Pemain (Kuning)
     ctx.beginPath();
     ctx.arc(0, 0, 6, 0, Math.PI * 2);
     ctx.fillStyle = '#fbbf24';
     ctx.fill();
 
+    // Arah Pandang (Putih)
     ctx.beginPath();
     ctx.moveTo(0, -10);
     ctx.lineTo(-6, 6);
@@ -353,7 +352,7 @@ export class Game {
   }
 
   checkInteractables() {
-    if (this.modal !== null || !this.world.city) return;
+    if (this.modal !== null || !this.world.city || this.isDriving) return;
     let nearest = null;
     let minDist = Infinity;
 
@@ -380,8 +379,21 @@ export class Game {
 
   doInteract() {
     if (!this.nearbyInteractable) return;
-    if (this.nearbyInteractable.type === 'airport') this.openTravelMenu('Airport');
-    else if (this.nearbyInteractable.type === 'subway') this.openTravelMenu('Subway');
+    
+    if (this.nearbyInteractable.type === 'airport') {
+      this.openTravelMenu('Airport');
+    } 
+    else if (this.nearbyInteractable.type === 'subway') {
+      this.openTravelMenu('Subway');
+    }
+    else if (this.nearbyInteractable.type === 'vehicle') {
+      this.drivenVehicle = this.nearbyInteractable.vehicleRef;
+      this.drivenVehicle.isDriven = true;
+      this.isDriving = true;
+      this.controls.enabled = false; // Matikan jalan kaki
+      this.interactBtn.style.display = 'none'; // Sembunyikan tombol E
+      this.showToast("W: Gas | S: Rem | A/D: Belok | E: Turun");
+    }
   }
 
   openTravelMenu(type) {
@@ -576,10 +588,31 @@ export class Game {
     const dt = Math.min(this.clock.getDelta(), 0.1);
 
     if (this.modal === null) {
-      this.controls.update(dt);
-      if (this.playerSync) this.playerSync.update(dt);
-      this.checkInteractables();
-      this.drawMinimap();
+      if (this.isDriving && this.drivenVehicle) {
+        // Logika Nyetir
+        this.drivenVehicle.update(dt, this.controls, this.camera);
+        
+        // Turun dari mobil (Pencet E)
+        if (this.controls.keys['KeyE']) {
+          this.controls.keys['KeyE'] = false;
+          this.isDriving = false;
+          this.drivenVehicle.isDriven = false;
+          this.controls.enabled = true;
+          
+          this.camera.position.set(
+            this.drivenVehicle.mesh.position.x + 2, 
+            1.6, 
+            this.drivenVehicle.mesh.position.z
+          );
+          this.showToast("Turun dari mobil.");
+        }
+      } else {
+        // Logika Jalan Kaki
+        this.controls.update(dt);
+        if (this.playerSync) this.playerSync.update(dt);
+        this.checkInteractables();
+        this.drawMinimap();
+      }
     }
     this.renderer.render(this.scene, this.camera);
   }
