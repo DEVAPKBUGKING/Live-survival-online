@@ -1,5 +1,7 @@
 import * as THREE from 'three';
 import { Vehicle } from './Vehicle.js';
+import { CityMap } from './CityMap.js';
+import { CityCucum } from '../data/city/CityCucum.js';
 
 export class World {
   constructor(scene, collision, cityData) {
@@ -22,6 +24,9 @@ export class World {
     this.buildLighting();
     await tick('Menyiapkan cahaya');
     this.buildGroundAndRoads();
+        // Panggil map Cucum
+    const map = new CityMap(this.scene, this.collision);
+    map.build(CityCucum);
     await tick('Membangun jalan raya');
     this.buildMainHouse();
     await tick('Membangun Main House');
