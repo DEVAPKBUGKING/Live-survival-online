@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { Perumahan } from '../data/city/citycucum/Perumahan.js';
 
 export class CityMap {
   constructor(scene, collision) {
