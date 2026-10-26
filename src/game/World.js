@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { Vehicle } from './Vehicle.js';
 import { CityMap } from './CityMap.js';
-import { CityCucum } from '../data/city/CityCucum.js';
+import { CityCucum } from '../data/city/citycucum/CityCucum.js'; // <--- UDAH DIUPDATE KE FOLDER BARU
 
 export class World {
   constructor(scene, collision, cityData) {
@@ -23,15 +23,20 @@ export class World {
 
     this.buildLighting();
     await tick('Menyiapkan cahaya');
-    // this.buildGroundAndRoads();
-        // Panggil map Cucum
+    
+    // this.buildGroundAndRoads(); // <--- DIKOMENTARI BIAR GA DOBEL SAMA MAP BARU
+    
+    // Panggil map Cucum
     const map = new CityMap(this.scene, this.collision);
     map.build(CityCucum);
     await tick('Membangun jalan raya');
+    
     this.buildMainHouse();
     await tick('Membangun Main House');
+    
     this.buildCityStructures();
     await tick('Membangun gedung kota');
+    
     this.buildNature();
     await tick('Menanam pohon & rumput');
   }
