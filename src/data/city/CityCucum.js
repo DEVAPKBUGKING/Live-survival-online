@@ -1,28 +1,24 @@
 export const CityCucum = {
   name: 'Cucum',
   country: 'Forge',
-  spawnPoint: { x: 0, z: 0 },
+  size: 300, // Ukuran pulau (300x300 meter)
   
-  // Bangunan utama
-  airport: { x: 0, z: -150 },
-  subway: { x: 0, z: 50 },
-  
-  // Perumahan
-  residential: [
-    { x: -20, z: 20, width: 10, depth: 10, color: 0x8a6a4a },
-    { x: 20, z: 20, width: 10, depth: 10, color: 0x8a6a4a },
-    { x: -20, z: 40, width: 10, depth: 10, color: 0x6a8a6a },
-    { x: 20, z: 40, width: 10, depth: 10, color: 0x6a8a6a }
-  ],
-  
-  // Pusat Kota (Gedung Tinggi)
-  downtown: [
-    { x: -25, z: -30, width: 15, depth: 15, height: 40, color: 0x8a8a8a },
-    { x: 25, z: -30, width: 15, depth: 15, height: 50, color: 0x6a7a8a },
-    { x: -25, z: -70, width: 15, depth: 15, height: 60, color: 0x7a6a6a },
-    { x: 25, z: -70, width: 15, depth: 15, height: 35, color: 0x9a9a8a }
-  ],
-  
-  // Tempat umum
-  mall: { x: -25, z: -110, width: 30, depth: 20, height: 15, color: 0xd0d0d0 }
+  // Posisi 15 Tempat (dari legenda fotomu)
+  locations: [
+    { name: 'Rumah (Pemain)', icon: '🏠', x: 0, z: 10 },
+    { name: 'Supermarket', icon: '🛒', x: -30, z: -20 },
+    { name: 'Game Center', icon: '🎮', x: -10, z: -50 },
+    { name: 'Taman', icon: '🌳', x: 20, z: -40 },
+    { name: 'Balai Kota', icon: '🏛️', x: 40, z: -10 },
+    { name: 'Terminal (Bus/Kereta)', icon: '🚌', x: -50, z: 10 },
+    { name: 'Rumah Sakit', icon: '🏥', x: 50, z: -50 },
+    { name: 'Tempat Kerja/Industri', icon: '🏭', x: -40, z: -60 },
+    { name: 'Restoran/Kafe', icon: '🍽️', x: -15, z: -30 },
+    { name: 'Polisi', icon: '👮', x: -60, z: -10 },
+    { name: 'Hotel', icon: '🏨', x: 10, z: -70 },
+    { name: 'Pelabuhan', icon: '⚓', x: 80, z: -80 },
+    { name: 'Pusat Perbelanjaan', icon: '🛍️', x: 60, z: 20 },
+    { name: 'Dermaga', icon: '🚢', x: 90, z: 0 },
+    { name: 'Bandara', icon: '✈️', x: -30, z: -100 }
+  ]
 };
