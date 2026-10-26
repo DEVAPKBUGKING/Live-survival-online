@@ -76,7 +76,7 @@ export class Game {
       this.scene.fog = new THREE.Fog(0x9dc8e8, this.renderDistance * 0.4, this.renderDistance);
 
       this.camera = new THREE.PerspectiveCamera(72, window.innerWidth / window.innerHeight, 0.1, 1000);
-      this.camera.position.set(0, 1.6, 0);
+      this.camera.position.set(0, 1.6, 15);
       this.camera.rotation.order = 'YXZ';
 
       this.renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance' });
