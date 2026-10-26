@@ -9,11 +9,13 @@ export class Controls {
     this.speed = 4.0;
     this.joystick = { x: 0, y: 0 };
     this.keys = {};
+    this.enabled = true; // <--- TAMBAHAN UNTUK MOBIL
 
     this.lookSensitivity = 0.0028;
     this.minPitch = -Math.PI / 2 + 0.01;
     this.maxPitch = Math.PI / 2 - 0.01;
 
+    // Camera bob
     this.bobPhase = 0;
     this.bobAmplitude = 0.045;
     this.bobFrequency = 8.5;
@@ -21,6 +23,7 @@ export class Controls {
 
     this.playerRadius = 0.35;
 
+    // Mouse drag fallback
     this.dragging = false;
     this.lastMouse = { x: 0, y: 0 };
     this.pointerLockFailed = false;
@@ -106,6 +109,8 @@ export class Controls {
   }
 
   update(dt) {
+    if (this.enabled === false) return; // <--- PENGAMAN SAAT NYETIR MOBIL
+
     let strafe = 0;
     let forward = 0;
 
@@ -156,7 +161,5 @@ export class Controls {
     }
 
     this.camera.position.y = 1.6 + this.currentBob;
-    
-    // DINDING GAIB SUDAH DIHAPUS DARI SINI
   }
 }
