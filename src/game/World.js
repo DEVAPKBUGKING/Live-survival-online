@@ -23,7 +23,7 @@ export class World {
 
     this.buildLighting();
     await tick('Menyiapkan cahaya');
-    this.buildGroundAndRoads();
+    // this.buildGroundAndRoads();
         // Panggil map Cucum
     const map = new CityMap(this.scene, this.collision);
     map.build(CityCucum);
