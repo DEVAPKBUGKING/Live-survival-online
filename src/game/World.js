@@ -1,15 +1,17 @@
 import * as THREE from 'three';
+import { Vehicle } from './Vehicle.js';
 
 export class World {
   constructor(scene, collision, cityData) {
     this.scene = scene;
     this.collision = collision;
     this.cityData = cityData; 
-    this.city = { interactables: [] }; // Biar Game.js ga error manggil .interactables
+    this.city = { interactables: [] }; 
+    this.animals = [];
   }
 
   async build(onProgress) {
-    const steps = 4;
+    const steps = 5;
     let done = 0;
     const tick = async (label) => {
       done++;
@@ -24,7 +26,9 @@ export class World {
     this.buildMainHouse();
     await tick('Membangun Main House');
     this.buildCityStructures();
-    await tick('Membangun gedung tinggi');
+    await tick('Membangun gedung kota');
+    this.buildNature();
+    await tick('Menanam pohon & rumput');
   }
 
   buildLighting() {
@@ -45,7 +49,7 @@ export class World {
   }
 
   buildGroundAndRoads() {
-    // Tanah hijau (luas)
+    // Tanah hijau
     const groundMat = new THREE.MeshLambertMaterial({ color: 0x4a7c3f }); 
     const ground = new THREE.Mesh(new THREE.PlaneGeometry(1000, 1000), groundMat);
     ground.rotation.x = -Math.PI / 2;
@@ -53,7 +57,7 @@ export class World {
     ground.receiveShadow = true;
     this.scene.add(ground);
 
-    // Jalan Raya Aspal (Lurus panjang)
+    // Jalan Raya Aspal
     const roadMat = new THREE.MeshLambertMaterial({ color: 0x333333 });
     const road = new THREE.Mesh(new THREE.PlaneGeometry(20, 600), roadMat);
     road.rotation.x = -Math.PI / 2;
@@ -61,7 +65,7 @@ export class World {
     road.receiveShadow = true;
     this.scene.add(road);
 
-    // Trotoar
+    // Trotoar Kiri & Kanan
     const sidewalkMat = new THREE.MeshLambertMaterial({ color: 0x888888 });
     const swLeft = new THREE.Mesh(new THREE.PlaneGeometry(3, 600), sidewalkMat);
     swLeft.rotation.x = -Math.PI / 2;
@@ -136,11 +140,65 @@ export class World {
       this.scene.add(winRight);
     }
 
+    // ==========================================
+    // SPAWN MOBIL DI DEPAN RUMAH
+    // ==========================================
+    const car = new Vehicle(this.scene, 3, 8); // X=3 (kanan), Z=8 (depan rumah)
+    
+    this.city.interactables.push({
+      type: 'vehicle',
+      vehicleRef: car,
+      position: new THREE.Vector3(3, 0, 8),
+      radius: 4,
+      label: 'Nyetir Mobil'
+    });
+  }
+
+  buildNature() {
     // Pohon-pohon di pinggir trotoar
     for (let i = 0; i < 20; i++) {
       const zPos = -15 - (i * 20);
       this.addTree(-13, zPos);
       this.addTree(13, zPos);
+    }
+
+    // Rumput 3D
+    const grassMat = new THREE.MeshLambertMaterial({ color: 0x4caf50, side: THREE.DoubleSide });
+    const grassGeo = new THREE.BufferGeometry();
+    const vertices = new Float32Array([
+      -0.1, 0, 0,   0.1, 0, 0,   0, 0.5, 0,
+      0, 0, -0.1,   0, 0, 0.1,   0, 0.5, 0
+    ]);
+    grassGeo.setAttribute('position', new THREE.BufferAttribute(vertices, 3));
+    grassGeo.computeVertexNormals();
+
+    for (let i = 0; i < 200; i++) {
+      const x = (Math.random() - 0.5) * 150;
+      const z = (Math.random() - 0.5) * 400;
+      // Jangan taruh rumput di jalan atau di dalam rumah
+      if (Math.abs(x) < 15 || Math.abs(z) < 10) continue; 
+
+      const blade = new THREE.Mesh(grassGeo, grassMat);
+      blade.position.set(x, 0, z);
+      blade.rotation.y = Math.random() * Math.PI;
+      blade.scale.setScalar(0.5 + Math.random() * 0.8);
+      this.scene.add(blade);
+    }
+
+    // Batu-batu kecil
+    const rockMat = new THREE.MeshLambertMaterial({ color: 0x7a7a7a });
+    for (let i = 0; i < 50; i++) {
+      const x = (Math.random() - 0.5) * 150;
+      const z = (Math.random() - 0.5) * 400;
+      if (Math.abs(x) < 15 || Math.abs(z) < 10) continue;
+      
+      const s = 0.2 + Math.random() * 0.2; 
+      const rock = new THREE.Mesh(new THREE.IcosahedronGeometry(s, 0), rockMat);
+      rock.position.set(x, s * 0.5, z);
+      rock.rotation.set(Math.random(), Math.random(), Math.random());
+      rock.castShadow = true;
+      this.scene.add(rock);
+      this.collision.addBox(x - s, 0, z - s, x + s, s * 2, z + s);
     }
   }
 
