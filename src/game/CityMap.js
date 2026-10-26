@@ -2,6 +2,17 @@ import * as THREE from 'three';
 import { Perumahan } from '../data/city/citycucum/Perumahan.js';
 import { BalaiKota } from '../data/city/citycucum/BalaiKota.js';
 import { Supermarket } from '../data/city/citycucum/Supermarket.js';
+import { Polisi } from '../data/city/citycucum/Polisi.js';
+import { PusatPerbelanjaan } from '../data/city/citycucum/PusatPerbelanjaan.js';
+import { Restoran } from '../data/city/citycucum/Restoran.js';
+import { RumahSakit } from '../data/city/citycucum/RumahSakit.js';
+import { Hotel } from '../data/city/citycucum/Hotel.js';
+import { GameCenter } from '../data/city/citycucum/GameCenter.js';
+import { Industri } from '../data/city/citycucum/Industri.js';
+import { Terminal } from '../data/city/citycucum/Terminal.js';
+import { Dermaga } from '../data/city/citycucum/Dermaga.js';
+import { Pelabuhan } from '../data/city/citycucum/Pelabuhan.js';
+import { Taman } from '../data/city/citycucum/Taman.js';
 
 export class CityMap {
   constructor(scene, collision) {
@@ -14,42 +25,41 @@ export class CityMap {
     this.buildRoads();
     this.buildAirportArea();
 
-    const perumahan = new Perumahan(this.scene, this.collision);
-    const balaiKota = new BalaiKota(this.scene, this.collision);
-    const supermarket = new Supermarket(this.scene, this.collision);
+    // Inisialisasi semua class bangunan
+    const builders = {
+      'Rumah': new Perumahan(this.scene, this.collision),
+      'Balai Kota': new BalaiKota(this.scene, this.collision),
+      'Supermarket': new Supermarket(this.scene, this.collision),
+      'Polisi': new Polisi(this.scene, this.collision),
+      'Pusat Perbelanjaan': new PusatPerbelanjaan(this.scene, this.collision),
+      'Restoran/Kafe': new Restoran(this.scene, this.collision),
+      'Rumah Sakit': new RumahSakit(this.scene, this.collision),
+      'Hotel': new Hotel(this.scene, this.collision),
+      'Game Center': new GameCenter(this.scene, this.collision),
+      'Tempat Kerja/Industri': new Industri(this.scene, this.collision),
+      'Terminal (Bus/Kereta)': new Terminal(this.scene, this.collision),
+      'Dermaga': new Dermaga(this.scene, this.collision),
+      'Pelabuhan': new Pelabuhan(this.scene, this.collision),
+      'Taman': new Taman(this.scene, this.collision)
+    };
 
     cityData.buildings.forEach(b => {
       if (b.type === 'house') {
-        perumahan.createHouse(b.x, b.z, b.color);
-      } 
-      else if (b.name === 'Balai Kota') {
-        balaiKota.create(b.x, b.z);
-      }
-      else if (b.name === 'Supermarket') {
-        supermarket.create(b.x, b.z);
-      }
-      else {
-        this.createMarker(b);
+        builders['Rumah'].createHouse(b.x, b.z, b.color);
+      } else if (builders[b.name]) {
+        builders[b.name].create(b.x, b.z);
+      } else {
+        this.createMarker(b); // Tiang buat Bandara (karena udah ada landasannya)
       }
     });
   }
 
   buildIslandAndWater(size) {
-    const water = new THREE.Mesh(
-      new THREE.PlaneGeometry(2000, 2000),
-      new THREE.MeshLambertMaterial({ color: 0x1e90ff })
-    );
-    water.rotation.x = -Math.PI / 2;
-    water.position.y = -0.5;
-    this.scene.add(water);
+    const water = new THREE.Mesh(new THREE.PlaneGeometry(2000, 2000), new THREE.MeshLambertMaterial({ color: 0x1e90ff }));
+    water.rotation.x = -Math.PI / 2; water.position.y = -0.5; this.scene.add(water);
 
-    const land = new THREE.Mesh(
-      new THREE.BoxGeometry(size, 1, size),
-      new THREE.MeshLambertMaterial({ color: 0x4a7c3f })
-    );
-    land.position.y = -0.5;
-    land.receiveShadow = true;
-    this.scene.add(land);
+    const land = new THREE.Mesh(new THREE.BoxGeometry(size, 1, size), new THREE.MeshLambertMaterial({ color: 0x4a7c3f }));
+    land.position.y = -0.5; land.receiveShadow = true; this.scene.add(land);
   }
 
   buildRoads() {
@@ -94,33 +104,22 @@ export class CityMap {
   buildAirportArea() {
     const airportMat = new THREE.MeshLambertMaterial({ color: 0x444444 });
     const airportArea = new THREE.Mesh(new THREE.PlaneGeometry(100, 80), airportMat);
-    airportArea.rotation.x = -Math.PI / 2;
-    airportArea.position.set(-100, 0.01, -150);
-    this.scene.add(airportArea);
+    airportArea.rotation.x = -Math.PI / 2; airportArea.position.set(-100, 0.01, -150); this.scene.add(airportArea);
 
     const runwayMat = new THREE.MeshLambertMaterial({ color: 0x111111 });
     const runway = new THREE.Mesh(new THREE.PlaneGeometry(80, 15), runwayMat);
-    runway.rotation.x = -Math.PI / 2;
-    runway.position.set(-100, 0.02, -150);
-    this.scene.add(runway);
+    runway.rotation.x = -Math.PI / 2; runway.position.set(-100, 0.02, -150); this.scene.add(runway);
 
     const lineMat = new THREE.MeshLambertMaterial({ color: 0xffffff });
     for (let i = -30; i <= 30; i += 10) {
       const line = new THREE.Mesh(new THREE.PlaneGeometry(4, 1), lineMat);
-      line.rotation.x = -Math.PI / 2;
-      line.position.set(-100 + i, 0.03, -150);
-      this.scene.add(line);
+      line.rotation.x = -Math.PI / 2; line.position.set(-100 + i, 0.03, -150); this.scene.add(line);
     }
   }
 
   createMarker(loc) {
-    const pole = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.5, 0.5, 5, 8),
-      new THREE.MeshLambertMaterial({ color: 0xffaa00 })
-    );
-    pole.position.set(loc.x, 2.5, loc.z);
-    pole.castShadow = true;
-    this.scene.add(pole);
+    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.5, 5, 8), new THREE.MeshLambertMaterial({ color: 0xffaa00 }));
+    pole.position.set(loc.x, 2.5, loc.z); pole.castShadow = true; this.scene.add(pole);
 
     const canvas = document.createElement('canvas');
     canvas.width = 512; canvas.height = 128;
@@ -133,9 +132,7 @@ export class CityMap {
 
     const tex = new THREE.CanvasTexture(canvas);
     const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false }));
-    sprite.scale.set(20, 5, 1);
-    sprite.position.set(loc.x, 7, loc.z);
-    this.scene.add(sprite);
+    sprite.scale.set(20, 5, 1); sprite.position.set(loc.x, 7, loc.z); this.scene.add(sprite);
 
     this.collision.addBox(loc.x - 1, 0, loc.z - 1, loc.x + 1, 5, loc.z + 1);
   }
