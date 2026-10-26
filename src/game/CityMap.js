@@ -1,5 +1,7 @@
 import * as THREE from 'three';
 import { Perumahan } from '../data/city/citycucum/Perumahan.js';
+import { BalaiKota } from '../data/city/citycucum/BalaiKota.js';
+import { Supermarket } from '../data/city/citycucum/Supermarket.js';
 
 export class CityMap {
   constructor(scene, collision) {
@@ -13,11 +15,20 @@ export class CityMap {
     this.buildAirportArea();
 
     const perumahan = new Perumahan(this.scene, this.collision);
+    const balaiKota = new BalaiKota(this.scene, this.collision);
+    const supermarket = new Supermarket(this.scene, this.collision);
 
     cityData.buildings.forEach(b => {
       if (b.type === 'house') {
         perumahan.createHouse(b.x, b.z, b.color);
-      } else {
+      } 
+      else if (b.name === 'Balai Kota') {
+        balaiKota.create(b.x, b.z);
+      }
+      else if (b.name === 'Supermarket') {
+        supermarket.create(b.x, b.z);
+      }
+      else {
         this.createMarker(b);
       }
     });
