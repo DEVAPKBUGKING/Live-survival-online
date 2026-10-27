@@ -6,73 +6,43 @@ import { LoginUI } from './ui/LoginUI.js';
 import { CreateRoom } from './ui/CreateRoom.js';
 import { JoinRoom } from './ui/JoinRoom.js';
 import { HistoryRooms } from './ui/HistoryRooms.js';
+import { Lobby } from './ui/Lobby.js';
 import { Rooms } from './multiplayer/Rooms.js';
 
 const app = document.getElementById('app');
 const rooms = new Rooms();
 
-// Cek sesi login saat halaman dibuka
 supabase.auth.getSession().then(({ data: { session } }) => {
-  if (session) {
-    loadProfileAndMenu(session.user);
-  } else {
-    showLogin();
-  }
+  if (session) loadProfileAndMenu(session.user);
+  else showLogin();
 });
 
 function showLogin() {
-  const login = new LoginUI(app, (user) => {
-    loadProfileAndMenu(user);
-  });
+  const login = new LoginUI(app, (user) => loadProfileAndMenu(user));
   login.show();
 }
 
 async function loadProfileAndMenu(user) {
-  const { data: profile, error } = await supabase
-    .from('profiles')
-    .select('*')
-    .eq('id', user.id)
-    .single();
-
-  if (error || !profile) {
-    alert('Gagal memuat profil: ' + (error?.message || 'Data tidak ditemukan'));
-    supabase.auth.signOut().then(() => location.reload());
-    return;
-  }
+  document.querySelectorAll('#game-hud, #car-controls, #hud-buttons, #joystick-base').forEach(el => el.remove());
+  
+  const { data: profile } = await supabase.from('profiles').select('*').eq('id', user.id).single();
+  if (!profile) return alert('Gagal memuat profil.');
 
   const menu = new MainMenu(app, {
     onPlay: () => showHistory(profile),
     onCreate: () => showCreateRoom(profile),
     onJoin: () => showJoinRoom(profile),
-    onSettings: () => {
-      if (confirm('Apakah kamu ingin logout?')) {
-        supabase.auth.signOut().then(() => location.reload());
-      }
-    }
+    onSettings: () => { if (confirm('Logout?')) supabase.auth.signOut().then(() => location.reload()); }
   });
   menu.show();
-}
-
-function showHistory(profile) {
-  const history = new HistoryRooms(app,
-    async (code) => {
-      try {
-        await rooms.joinRoom({ code, name: profile.username });
-        enterWorld(profile);
-      } catch (e) {
-        alert(e.message);
-      }
-    },
-    () => location.reload()
-  );
-  history.show();
 }
 
 function showCreateRoom(profile) {
   const screen = new CreateRoom(app,
     async ({ name, roomName, maxPlayers }) => {
       await rooms.createRoom({ name, roomName, maxPlayers });
-      enterWorld(profile);
+      screen.hide();
+      showLobby(profile);
     },
     () => location.reload()
   );
@@ -83,11 +53,20 @@ function showJoinRoom(profile) {
   const screen = new JoinRoom(app,
     async ({ code, name }) => {
       await rooms.joinRoom({ code, name });
-      enterWorld(profile);
+      screen.hide();
+      showLobby(profile);
     },
     () => location.reload()
   );
   screen.show();
+}
+
+function showLobby(profile) {
+  const lobby = new Lobby(app, rooms, {
+    onStart: () => enterWorld(profile),
+    onLeave: () => location.reload()
+  });
+  lobby.show();
 }
 
 async function enterWorld(profile) {
@@ -95,7 +74,7 @@ async function enterWorld(profile) {
   await new Promise(r => setTimeout(r, 30));
 
   window.__rooms = rooms;
-  const game = new Game(app, profile); // Oper profil (uang, admin) ke Game
+  const game = new Game(app, profile);
   window.__game = game;
 
   try {
@@ -108,7 +87,7 @@ async function enterWorld(profile) {
   }
 }
 
-// UI Loading
+// Loading UI
 let loadingEl = null, loadingBar = null, loadingLabel = null;
 function showLoading() {
   loadingEl = document.createElement('div');
