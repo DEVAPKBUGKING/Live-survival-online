@@ -10,12 +10,12 @@ export const CucumBuildings = [
   
   { name: 'Gedung Gaya 7', type: 'house', style: 7, x: -120, z: 160, color: 0x9ba4b5 },
   { name: 'Gedung Gaya 8', type: 'house', style: 8, x: -140, z: 160, color: 0xd1ccc5 },
-  { name: 'Cucu Mart', type: 'house', style: 9, x: -160, z: 160, color: 0x8b7d6b },
+  { name: 'Cucu Mart', type: 'house', style: 9, x: -100, z: 120, color: 0xdcdcdc },
 
   // --- BLOK 2: RUMAH PEMAIN & FASILITAS UMUM ---
   { name: 'Rumah Pemain', type: 'house', style: 2, x: -90, z: 130, color: 0xd1ccc5 },
   
-  { name: 'Supermarket', icon: '🛒', x: -100, z: 70 },
+  { name: 'Supermarket', icon: '🛒', x: -100, z: 70 }, // Supermarket lama masih pakai tiang
   { name: 'Taman', icon: '🌳', x: -70, z: 150 },
   { name: 'Balai Kota', icon: '🏛️', x: 40, z: 40 },       
   { name: 'Polisi', icon: '👮', x: -40, z: -40 },         
