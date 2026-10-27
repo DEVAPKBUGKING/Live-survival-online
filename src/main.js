@@ -12,6 +12,7 @@ import { Rooms } from './multiplayer/Rooms.js';
 const app = document.getElementById('app');
 const rooms = new Rooms();
 
+// Cek Sesi Login
 supabase.auth.getSession().then(({ data: { session } }) => {
   if (session) loadProfileAndMenu(session.user);
   else showLogin();
@@ -23,7 +24,8 @@ function showLogin() {
 }
 
 async function loadProfileAndMenu(user) {
-  document.querySelectorAll('#game-hud, #car-controls, #hud-buttons, #joystick-base').forEach(el => el.remove());
+  // Bersihin sisa HUD
+  document.querySelectorAll('#game-hud, #car-controls, #hud-buttons, #joystick-base, #minimap-canvas').forEach(el => el.remove());
   
   const { data: profile } = await supabase.from('profiles').select('*').eq('id', user.id).single();
   if (!profile) return alert('Gagal memuat profil.');
@@ -35,6 +37,20 @@ async function loadProfileAndMenu(user) {
     onSettings: () => { if (confirm('Logout?')) supabase.auth.signOut().then(() => location.reload()); }
   });
   menu.show();
+}
+
+// FUNGSI TOMBOL PLAY (History)
+function showHistory(profile) {
+  const history = new HistoryRooms(app,
+    async (code) => {
+      try {
+        await rooms.joinRoom({ code, name: profile.username });
+        showLobby(profile);
+      } catch (e) { alert(e.message); }
+    },
+    () => location.reload()
+  );
+  history.show();
 }
 
 function showCreateRoom(profile) {
@@ -87,7 +103,7 @@ async function enterWorld(profile) {
   }
 }
 
-// Loading UI
+// Loading Screen
 let loadingEl = null, loadingBar = null, loadingLabel = null;
 function showLoading() {
   loadingEl = document.createElement('div');
