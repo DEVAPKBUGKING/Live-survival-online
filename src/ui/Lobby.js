@@ -14,7 +14,7 @@ export class Lobby {
     this.el.style.cssText = `position: fixed; inset: 0; z-index: 99999; background: #0a0a12; display: flex; align-items: center; justify-content: center; padding: 24px; font-family: sans-serif;`;
     
     const room = this.rooms.currentRoom;
-    const isHost = this.rooms.currentPlayer.is_host;
+    const isHost = this.rooms.currentPlayer?.is_host || false;
 
     this.el.innerHTML = `
       <div style="width: 100%; max-width: 400px; background: #14142a; border: 1px solid #2a2a40; border-radius: 16px; padding: 24px; text-align: center;">
@@ -30,7 +30,7 @@ export class Lobby {
 
         <div style="display: flex; gap: 10px;">
           <button id="btn-leave" style="flex: 1; padding: 15px; border-radius: 10px; border: 1px solid #ef4444; background: rgba(239,68,68,0.2); color: #ef4444; font-weight: bold; cursor: pointer;">KELUAR</button>
-          ${isHost ? `<button id="btn-start" style="flex: 1; padding: 15px; border-radius: 10px; border: 1px solid #3b82f6; background: #3b82f6; color: #fff; font-weight: bold; cursor: pointer;">MULAI</button>` : ''}
+          <button id="btn-start" style="flex: 1; padding: 15px; border-radius: 10px; border: 1px solid #3b82f6; background: #3b82f6; color: #fff; font-weight: bold; cursor: pointer; ${isHost ? '' : 'display: none;'}">MULAI</button>
         </div>
       </div>
     `;
@@ -39,31 +39,23 @@ export class Lobby {
     this.refreshPlayers();
 
     this.el.querySelector('#btn-leave').addEventListener('click', async () => {
-      await this.rooms.leaveRoom();
+      if (this.rooms.currentPlayer) await this.rooms.leaveRoom();
       this.hide();
       this.onLeave();
     });
 
+    const startBtn = this.el.querySelector('#btn-start');
     if (isHost) {
-      const startBtn = this.el.querySelector('#btn-start');
-      startBtn.addEventListener('click', async () => {
+      startBtn.addEventListener('click', () => {
         if (this.started) return;
         this.started = true;
         startBtn.innerText = 'MEMUAT...';
         
-        await this.rooms.startGame();
-        
+        // Nggak nunggu database, langsung masuk game!
         this.hide();
         this.onStart(); 
       });
     }
-
-    this.unsubStart = this.rooms.on('start_game', () => {
-      if (this.started) return;
-      this.started = true;
-      this.hide();
-      this.onStart();
-    });
   }
 
   async refreshPlayers() {
@@ -82,7 +74,6 @@ export class Lobby {
   }
 
   hide() { 
-    if (this.unsubStart) this.unsubStart();
     if (this.el) { this.el.remove(); this.el = null; } 
   }
 }
