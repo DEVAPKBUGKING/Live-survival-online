@@ -51,20 +51,18 @@ export class Lobby {
         this.started = true;
         startBtn.innerText = 'MEMUAT...';
         
-        // KIRIM SINYAL KE PEMAIN LAIN
         await this.rooms.startGame();
         
         this.hide();
-        this.onStart(); // <--- INI YANG TADI HILANG
+        this.onStart(); 
       });
     }
 
-    // Dengerin kalau host nge-klik mulai
     this.unsubStart = this.rooms.on('start_game', () => {
       if (this.started) return;
       this.started = true;
       this.hide();
-      this.onStart(); // <--- PEMAIN LAIN IKUT MASUK
+      this.onStart();
     });
   }
 
