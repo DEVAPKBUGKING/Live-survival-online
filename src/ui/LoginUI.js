@@ -73,41 +73,27 @@ export class LoginUI {
 
       try {
         if (this.isRegisterMode) {
-          // --- PROSES DAFTAR ---
-          // Cek username udah ada belum
           const { data: exist } = await supabase.from('profiles').select('username').eq('username', username).maybeSingle();
           if (exist) throw new Error("Username sudah dipakai!");
 
-          // Bikin email dummy buat Supabase Auth (karena lu gamau pake email)
           const dummyEmail = `${username.toLowerCase()}@lso-game.com`;
           
           const { data: authData, error: authErr } = await supabase.auth.signUp({
-            email: dummyEmail,
-            password: password,
-            options: { data: { username: username } }
+            email: dummyEmail, password: password, options: { data: { username: username } }
           });
-
           if (authErr) throw authErr;
 
-          // Simpan password mentah (biar bisa login pakai username nanti)
           await supabase.from('profiles').update({ password_text: password }).eq('id', authData.user.id);
-          
           this.handleSuccess(authData.user);
         } else {
-          // --- PROSES MASUK ---
-          // Cari user berdasarkan username di tabel profiles
           const { data: profile, error: pErr } = await supabase.from('profiles').select('*').eq('username', username).maybeSingle();
-          
           if (!profile) throw new Error("Akun tidak ditemukan!");
           if (profile.password_text !== password) throw new Error("Password salah!");
 
-          // Login ke Supabase pakai email dummy
           const dummyEmail = `${username.toLowerCase()}@lso-game.com`;
           const { data: authData, error: authErr } = await supabase.auth.signInWithPassword({
-            email: dummyEmail,
-            password: password
+            email: dummyEmail, password: password
           });
-
           if (authErr) throw authErr;
           this.handleSuccess(authData.user);
         }
