@@ -3,93 +3,50 @@ export class Controls {
     this.camera = camera;
     this.canvas = canvas;
     this.collision = collision;
-
     this.yaw = 0;
     this.pitch = 0;
     this.speed = 4.0;
     this.joystick = { x: 0, y: 0 };
     this.keys = {};
-    this.enabled = true; // <--- TAMBAHAN UNTUK MOBIL
-
+    this.enabled = true;
     this.lookSensitivity = 0.0028;
     this.minPitch = -Math.PI / 2 + 0.01;
     this.maxPitch = Math.PI / 2 - 0.01;
-
-    // Camera bob
     this.bobPhase = 0;
     this.bobAmplitude = 0.045;
     this.bobFrequency = 8.5;
     this.currentBob = 0;
-
     this.playerRadius = 0.35;
-
-    // Mouse drag fallback
-    this.dragging = false;
-    this.lastMouse = { x: 0, y: 0 };
-    this.pointerLockFailed = false;
 
     this._onKeyDown = (e) => { this.keys[e.code] = true; };
     this._onKeyUp = (e) => { this.keys[e.code] = false; };
-
-    this._onCanvasClick = () => {
-      if (this.pointerLockFailed) return;
-      if (this.canvas.requestPointerLock) {
-        const p = this.canvas.requestPointerLock();
-        if (p && p.catch) p.catch(() => { this.pointerLockFailed = true; });
-      }
-    };
-
-    this._onMouseMove = (e) => {
+    this._onPointerLockMove = (e) => {
       if (document.pointerLockElement === this.canvas) {
         this.yaw -= (e.movementX || 0) * this.lookSensitivity;
         this.pitch -= (e.movementY || 0) * this.lookSensitivity;
         this.pitch = Math.max(this.minPitch, Math.min(this.maxPitch, this.pitch));
         this.applyRotation();
-      } else if (this.dragging) {
-        const dx = e.clientX - this.lastMouse.x;
-        const dy = e.clientY - this.lastMouse.y;
-        this.lastMouse.x = e.clientX;
-        this.lastMouse.y = e.clientY;
-        this.yaw -= dx * this.lookSensitivity;
-        this.pitch -= dy * this.lookSensitivity;
-        this.pitch = Math.max(this.minPitch, Math.min(this.maxPitch, this.pitch));
-        this.applyRotation();
       }
     };
-
     this._onMouseDown = (e) => {
       if (e.button === 0 && document.pointerLockElement !== this.canvas) {
-        this.dragging = true;
-        this.lastMouse.x = e.clientX;
-        this.lastMouse.y = e.clientY;
+        this.canvas.requestPointerLock();
       }
-    };
-
-    this._onMouseUp = () => { this.dragging = false; };
-
-    this._onPointerLockError = () => {
-      this.pointerLockFailed = true;
     };
   }
 
   enable() {
     window.addEventListener('keydown', this._onKeyDown);
     window.addEventListener('keyup', this._onKeyUp);
-    this.canvas.addEventListener('click', this._onCanvasClick);
-    document.addEventListener('mousemove', this._onMouseMove);
-    document.addEventListener('mousedown', this._onMouseDown);
-    document.addEventListener('mouseup', this._onMouseUp);
-    document.addEventListener('pointerlockerror', this._onPointerLockError);
+    this.canvas.addEventListener('mousedown', this._onMouseDown);
+    document.addEventListener('mousemove', this._onPointerLockMove);
   }
 
   disable() {
     window.removeEventListener('keydown', this._onKeyDown);
     window.removeEventListener('keyup', this._onKeyUp);
-    this.canvas.removeEventListener('click', this._onCanvasClick);
-    document.removeEventListener('mousemove', this._onMouseMove);
-    document.removeEventListener('mousedown', this._onMouseDown);
-    document.removeEventListener('mouseup', this._onMouseUp);
-    document.removeEventListener('pointerlockerror', this._onPointerLockError);
+    this.canvas.removeEventListener('mousedown', this._onMouseDown);
+    document.removeEventListener('mousemove', this._onPointerLockMove);
     if (document.pointerLockElement === this.canvas) document.exitPointerLock();
   }
 
@@ -109,11 +66,9 @@ export class Controls {
   }
 
   update(dt) {
-    if (this.enabled === false) return; // <--- PENGAMAN SAAT NYETIR MOBIL
+    if (this.enabled === false) return;
 
-    let strafe = 0;
-    let forward = 0;
-
+    let strafe = 0, forward = 0;
     if (this.joystick && (this.joystick.x !== 0 || this.joystick.y !== 0)) {
       strafe = this.joystick.x;
       forward = -this.joystick.y;
